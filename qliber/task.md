@@ -8,3 +8,6 @@
 - [x] Implement structured logging utilities following required schema
 - [x] Add comprehensive tests covering data ingestion, feature, and metric flows
 - [x] Document project structure, usage, and design decisions
+- [x] Validate Rust metrics parity with Qlib risk analysis outputs (sum & product modes)
+- [x] Extend metrics API with accumulation modes, information ratio, and drawdown support
+- [x] Refresh documentation and regression tests to capture the expanded evaluation surface

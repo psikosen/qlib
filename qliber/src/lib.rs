@@ -9,6 +9,6 @@ pub mod metrics;
 
 pub use dataset::{DatasetError, MarketData};
 pub use features::{with_daily_returns, with_moving_average, with_z_score};
-pub use metrics::PerformanceMetrics;
+pub use metrics::{AccumulationMode, PerformanceMetrics};
 
 pub type Result<T> = anyhow::Result<T>;

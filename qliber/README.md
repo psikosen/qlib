@@ -8,7 +8,8 @@ quantitative finance research pipelines.
 
 - **Performance-first analytics** powered by [Polars](https://www.pola.rs/), leveraging efficient memory layouts and lazy execution.
 - **Deterministic feature engineering** implemented with numerically stable rolling windows.
-- **Robust evaluation** metrics with data-parallel aggregation via [Rayon](https://docs.rs/rayon/latest/rayon/).
+- **Robust evaluation** metrics with data-parallel aggregation via [Rayon](https://docs.rs/rayon/latest/rayon/), matching
+  Qlib's risk analysis outputs (cumulative return, annualized stats, information ratio, and max drawdown).
 - **Structured observability** implemented through [tracing](https://docs.rs/tracing/latest/tracing/) with a canonical JSON schema and the "Continuous skepticism" prompts required by the guidelines.
 
 ## Porting Scope
@@ -18,7 +19,8 @@ qliber mirrors these building blocks with the following Rust-native equivalents:
 
 - **Data Server → `dataset` module:** lazy CSV ingestion, column projection, and temporal filtering.
 - **Feature Library → `features` module:** rolling statistics, return computation, and normalization helpers.
-- **Workflow & Evaluation → `metrics` module:** cumulative/annualized return aggregation and Sharpe ratio computation.
+- **Workflow & Evaluation → `metrics` module:** cumulative/annualized return aggregation, Sharpe/information ratios,
+  and drawdown metrics with both arithmetic and geometric accumulation modes.
 
 This initial slice prioritizes correctness and extensibility; additional modules such as model training or portfolio optimization can be layered atop these primitives in follow-up iterations.
 
@@ -32,7 +34,7 @@ qliber/
 │   ├── dataset.rs      # Lazy CSV ingestion and column selection utilities
 │   ├── features.rs     # Feature engineering helpers (returns, moving averages, z-scores)
 │   ├── logging.rs      # Structured logging initialization and helpers
-│   ├── metrics.rs      # Performance metric calculations (cumulative, annualized, Sharpe)
+│   ├── metrics.rs      # Performance metric calculations (cumulative, annualized, ratios, drawdowns)
 │   └── lib.rs          # Public crate exports
 └── tests
     └── pipeline.rs     # End-to-end regression test covering the primary flow
@@ -42,7 +44,9 @@ qliber/
 
 ```rust
 use chrono::Utc;
-use qliber::{with_daily_returns, with_moving_average, with_z_score, MarketData, PerformanceMetrics};
+use qliber::{
+    with_daily_returns, with_moving_average, with_z_score, AccumulationMode, MarketData, PerformanceMetrics,
+};
 
 fn main() -> anyhow::Result<()> {
     qliber::logging::init_logging()?;
@@ -63,9 +67,12 @@ fn main() -> anyhow::Result<()> {
         .f64()?
         .into_no_null_iter()
         .collect::<Vec<_>>();
-    let metrics = PerformanceMetrics::evaluate(&returns, 252.0);
+    let metrics = PerformanceMetrics::evaluate_with_mode(&returns, 252.0, AccumulationMode::Product);
 
-    println!("Sharpe ratio: {:.3}", metrics.sharpe_ratio);
+    println!(
+        "Annualized return: {:.3}, Information ratio: {:.3}",
+        metrics.annualized_return, metrics.information_ratio
+    );
 
     Ok(())
 }
