@@ -7,7 +7,7 @@ use tempfile::NamedTempFile;
 use qliber::dataset::MarketData;
 use qliber::features::{with_daily_returns, with_moving_average, with_z_score};
 use qliber::logging;
-use qliber::metrics::PerformanceMetrics;
+use qliber::metrics::{AccumulationMode, PerformanceMetrics};
 
 #[test]
 fn end_to_end_pipeline_produces_expected_statistics() -> anyhow::Result<()> {
@@ -50,7 +50,79 @@ fn end_to_end_pipeline_produces_expected_statistics() -> anyhow::Result<()> {
 
     let metrics = PerformanceMetrics::evaluate(&returns, 252.0);
     assert!(metrics.cumulative_return > 0.0);
+    assert!(metrics.mean_return > 0.0);
     assert!(metrics.annualized_volatility >= 0.0);
+    assert_abs_diff_eq!(
+        metrics.sharpe_ratio,
+        metrics.information_ratio,
+        epsilon = 1e-12
+    );
 
     Ok(())
+}
+
+#[test]
+fn performance_metrics_align_with_python_risk_analysis() {
+    let returns = vec![0.01, -0.015, 0.02, -0.005];
+
+    let sum_mode = PerformanceMetrics::evaluate_with_mode(&returns, 252.0, AccumulationMode::Sum);
+    assert_abs_diff_eq!(sum_mode.mean_return, 0.0025, epsilon = 1e-12);
+    assert_abs_diff_eq!(sum_mode.std_dev, 0.015545631755148026, epsilon = 1e-12);
+    assert_abs_diff_eq!(sum_mode.cumulative_return, 0.01, epsilon = 1e-12);
+    assert_abs_diff_eq!(sum_mode.annualized_return, 0.63, epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        sum_mode.annualized_volatility,
+        0.24677925358506136,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(
+        sum_mode.information_ratio,
+        2.5528888301902897,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(sum_mode.max_drawdown, -0.015, epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        sum_mode.sharpe_ratio,
+        sum_mode.information_ratio,
+        epsilon = 1e-12
+    );
+
+    let product_mode =
+        PerformanceMetrics::evaluate_with_mode(&returns, 252.0, AccumulationMode::Product);
+    assert_abs_diff_eq!(
+        product_mode.mean_return,
+        0.002409593043190217,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(product_mode.std_dev, 0.015508406743410254, epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        product_mode.cumulative_return,
+        0.009673264999999986,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(
+        product_mode.annualized_return,
+        0.8339773917946953,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        product_mode.annualized_volatility,
+        0.24618832484340372,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(
+        product_mode.information_ratio,
+        2.4664753995550988,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        product_mode.max_drawdown,
+        -0.015000000000000013,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(
+        product_mode.sharpe_ratio,
+        product_mode.information_ratio,
+        epsilon = 1e-12
+    );
 }
