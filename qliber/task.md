@@ -12,3 +12,6 @@
 - [x] Extend metrics API with accumulation modes, information ratio, and drawdown support
 - [x] Refresh documentation and regression tests to capture the expanded evaluation surface
 - [x] Harden logging initialization to be concurrency-safe and idempotent
+- [x] Align Rust risk analysis API with Python frequency handling and return semantics
+- [x] Port indicator analysis weighting logic to Rust metrics module
+- [x] Expand regression tests and docs to cover the newly ported evaluation features
