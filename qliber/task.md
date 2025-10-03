@@ -11,3 +11,4 @@
 - [x] Validate Rust metrics parity with Qlib risk analysis outputs (sum & product modes)
 - [x] Extend metrics API with accumulation modes, information ratio, and drawdown support
 - [x] Refresh documentation and regression tests to capture the expanded evaluation surface
+- [x] Harden logging initialization to be concurrency-safe and idempotent
