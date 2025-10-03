@@ -16,6 +16,14 @@ pub enum MetricsError {
     MissingColumn(String),
     #[error("indicator analysis encountered zero total weight for {0:?}")]
     ZeroWeights(IndicatorMethod),
+    #[error("either periods_per_year or frequency must be provided")]
+    MissingFrequencyOrScaler,
+    #[error("invalid accumulation mode `{0}`; expected `sum` or `product`")]
+    InvalidAccumulationMode(String),
+    #[error(
+        "invalid indicator analysis method `{0}`; expected `mean`, `amount_weighted`, or `value_weighted`"
+    )]
+    InvalidIndicatorMethod(String),
 }
 
 pub type MetricsResult<T> = Result<T, MetricsError>;
@@ -112,12 +120,38 @@ pub enum IndicatorMethod {
 }
 
 /// Controls how returns are accumulated when computing performance statistics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AccumulationMode {
     /// Arithmetic accumulation that mirrors Qlib's `mode="sum"` risk analysis.
+    #[default]
     Sum,
     /// Geometric accumulation equivalent to Qlib's `mode="product"` risk analysis.
     Product,
+}
+
+impl FromStr for AccumulationMode {
+    type Err = MetricsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "sum" => Ok(AccumulationMode::Sum),
+            "product" => Ok(AccumulationMode::Product),
+            other => Err(MetricsError::InvalidAccumulationMode(other.to_string())),
+        }
+    }
+}
+
+impl FromStr for IndicatorMethod {
+    type Err = MetricsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "mean" => Ok(IndicatorMethod::Mean),
+            "amount_weighted" => Ok(IndicatorMethod::AmountWeighted),
+            "value_weighted" => Ok(IndicatorMethod::ValueWeighted),
+            other => Err(MetricsError::InvalidIndicatorMethod(other.to_string())),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -134,7 +168,7 @@ pub struct PerformanceMetrics {
 
 impl PerformanceMetrics {
     pub fn evaluate(returns: &[f64], periods_per_year: f64) -> Self {
-        Self::evaluate_with_mode(returns, periods_per_year, AccumulationMode::Product)
+        Self::evaluate_with_mode(returns, periods_per_year, AccumulationMode::Sum)
     }
 
     pub fn evaluate_with_mode(
@@ -221,6 +255,64 @@ impl PerformanceMetrics {
         );
 
         metrics
+    }
+
+    pub fn evaluate_with_scaler_or_frequency(
+        returns: &[f64],
+        periods_per_year: Option<f64>,
+        freq: Option<&str>,
+        mode: AccumulationMode,
+    ) -> MetricsResult<Self> {
+        match (periods_per_year, freq) {
+            (Some(scaler), Some(freq_str)) => {
+                log_event(
+                    file!(),
+                    "PerformanceMetrics",
+                    "evaluate_with_scaler_or_frequency",
+                    "metrics.evaluate",
+                    line!(),
+                    &format!(
+                        "Received both scaler ({scaler}) and frequency `{freq_str}`; frequency will be ignored"
+                    ),
+                    None,
+                    "none",
+                    "GET",
+                );
+                Ok(Self::evaluate_with_mode(returns, scaler, mode))
+            }
+            (Some(scaler), None) => {
+                log_event(
+                    file!(),
+                    "PerformanceMetrics",
+                    "evaluate_with_scaler_or_frequency",
+                    "metrics.evaluate",
+                    line!(),
+                    &format!(
+                        "Evaluating with provided scaler {scaler} using {:?} mode",
+                        mode
+                    ),
+                    None,
+                    "none",
+                    "GET",
+                );
+                Ok(Self::evaluate_with_mode(returns, scaler, mode))
+            }
+            (None, Some(freq_str)) => Self::evaluate_with_frequency_str(returns, freq_str, mode),
+            (None, None) => {
+                log_event(
+                    file!(),
+                    "PerformanceMetrics",
+                    "evaluate_with_scaler_or_frequency",
+                    "metrics.evaluate",
+                    line!(),
+                    "Missing both scaler and frequency for evaluation",
+                    None,
+                    "none",
+                    "GET",
+                );
+                Err(MetricsError::MissingFrequencyOrScaler)
+            }
+        }
     }
 
     fn from_sum_mode(returns: &[f64], periods_per_year: f64) -> Self {
@@ -377,6 +469,42 @@ impl PerformanceMetrics {
             max_drawdown,
         }
     }
+
+    pub fn to_risk_dataframe(&self) -> MetricsResult<DataFrame> {
+        let metrics = [
+            "mean",
+            "std",
+            "annualized_return",
+            "information_ratio",
+            "max_drawdown",
+        ];
+        let values = [
+            self.mean_return,
+            self.std_dev,
+            self.annualized_return,
+            self.information_ratio,
+            self.max_drawdown,
+        ];
+
+        let frame = DataFrame::new(vec![
+            Series::new("metric", metrics),
+            Series::new("risk", values),
+        ])?;
+
+        log_event(
+            file!(),
+            "PerformanceMetrics",
+            "to_risk_dataframe",
+            "metrics.evaluate",
+            line!(),
+            "Converted performance metrics into risk DataFrame representation",
+            None,
+            "none",
+            "GET",
+        );
+
+        Ok(frame)
+    }
 }
 
 pub fn indicator_analysis(frame: &DataFrame, method: IndicatorMethod) -> MetricsResult<DataFrame> {
@@ -497,6 +625,92 @@ pub fn indicator_analysis(frame: &DataFrame, method: IndicatorMethod) -> Metrics
     );
 
     Ok(result)
+}
+
+pub fn indicator_analysis_with_method(frame: &DataFrame, method: &str) -> MetricsResult<DataFrame> {
+    match IndicatorMethod::from_str(method) {
+        Ok(parsed) => indicator_analysis(frame, parsed),
+        Err(error) => {
+            log_event(
+                file!(),
+                "PerformanceMetrics",
+                "indicator_analysis_with_method",
+                "metrics.indicator",
+                line!(),
+                &format!("Invalid indicator analysis method `{method}`"),
+                Some(&error.to_string()),
+                "none",
+                "GET",
+            );
+            Err(error)
+        }
+    }
+}
+
+pub fn risk_analysis(
+    returns: &[f64],
+    periods_per_year: Option<f64>,
+    freq: Option<&str>,
+    mode: Option<&str>,
+) -> MetricsResult<DataFrame> {
+    let accumulation_mode = match mode {
+        Some(mode_str) => match AccumulationMode::from_str(mode_str) {
+            Ok(mode) => mode,
+            Err(error) => {
+                log_event(
+                    file!(),
+                    "PerformanceMetrics",
+                    "risk_analysis",
+                    "metrics.evaluate",
+                    line!(),
+                    &format!("Invalid accumulation mode `{mode_str}`"),
+                    Some(&error.to_string()),
+                    "none",
+                    "GET",
+                );
+                return Err(error);
+            }
+        },
+        None => {
+            log_event(
+                file!(),
+                "PerformanceMetrics",
+                "risk_analysis",
+                "metrics.evaluate",
+                line!(),
+                "No accumulation mode supplied; defaulting to arithmetic accumulation",
+                None,
+                "none",
+                "GET",
+            );
+            AccumulationMode::default()
+        }
+    };
+
+    let metrics = PerformanceMetrics::evaluate_with_scaler_or_frequency(
+        returns,
+        periods_per_year,
+        freq,
+        accumulation_mode,
+    )?;
+    let frame = metrics.to_risk_dataframe()?;
+
+    log_event(
+        file!(),
+        "PerformanceMetrics",
+        "risk_analysis",
+        "metrics.evaluate",
+        line!(),
+        &format!(
+            "Evaluated risk metrics using {:?} accumulation with scaler {:?} and frequency {:?}",
+            accumulation_mode, periods_per_year, freq
+        ),
+        None,
+        "none",
+        "GET",
+    );
+
+    Ok(frame)
 }
 
 fn sample_variance(values: &[f64], mean: f64) -> f64 {

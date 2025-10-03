@@ -87,9 +87,18 @@ fn main() -> anyhow::Result<()> {
     let indicator_stats = indicator_analysis(&trade_frame, IndicatorMethod::AmountWeighted)?;
     println!("Indicator analysis:\n{}", indicator_stats);
 
+    let risk_frame = qliber::risk_analysis(&returns, Some(252.0), None, Some("sum"))?;
+    let value_weighted = qliber::indicator_analysis_with_method(&trade_frame, "value_weighted")?;
+    println!("Risk analysis:\n{}", risk_frame);
+    println!("Value-weighted indicators:\n{}", value_weighted);
+
     Ok(())
 }
 ```
+
+The `risk_analysis` and `indicator_analysis_with_method` helpers accept the same string-based
+options as Qlib's Python API, making it straightforward to port workflows that rely on
+`mode="sum"/"product"` or indicator weighting strings without changing call sites.
 
 ## Development
 

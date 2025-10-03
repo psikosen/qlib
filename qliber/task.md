@@ -15,3 +15,6 @@
 - [x] Align Rust risk analysis API with Python frequency handling and return semantics
 - [x] Port indicator analysis weighting logic to Rust metrics module
 - [x] Expand regression tests and docs to cover the newly ported evaluation features
+- [x] Add string-based compatibility wrappers for risk and indicator analysis APIs
+- [x] Extend tests to validate scaler/frequency handling and Python mode parity
+- [x] Document the parity helpers in the README for downstream consumers

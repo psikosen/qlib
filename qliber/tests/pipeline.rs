@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Write;
 
 use approx::assert_abs_diff_eq;
@@ -10,9 +11,39 @@ use qliber::dataset::MarketData;
 use qliber::features::{with_daily_returns, with_moving_average, with_z_score};
 use qliber::logging;
 use qliber::metrics::{
-    AccumulationMode, AnalysisFrequency, FrequencyUnit, IndicatorMethod, PerformanceMetrics,
-    indicator_analysis,
+    AccumulationMode, AnalysisFrequency, FrequencyUnit, IndicatorMethod, MetricsError,
+    PerformanceMetrics, indicator_analysis, indicator_analysis_with_method, risk_analysis,
 };
+
+fn metric_frame_to_map(frame: &DataFrame) -> HashMap<String, f64> {
+    frame
+        .column("metric")
+        .unwrap()
+        .utf8()
+        .unwrap()
+        .into_iter()
+        .zip(frame.column("risk").unwrap().f64().unwrap().into_iter())
+        .filter_map(|(metric, value)| match (metric, value) {
+            (Some(metric), Some(value)) => Some((metric.to_string(), value)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn indicator_frame_to_map(frame: &DataFrame) -> HashMap<String, f64> {
+    frame
+        .column("indicator")
+        .unwrap()
+        .utf8()
+        .unwrap()
+        .into_iter()
+        .zip(frame.column("value").unwrap().f64().unwrap().into_iter())
+        .filter_map(|(metric, value)| match (metric, value) {
+            (Some(metric), Some(value)) => Some((metric.to_string(), value)),
+            _ => None,
+        })
+        .collect()
+}
 
 #[test]
 fn end_to_end_pipeline_produces_expected_statistics() -> anyhow::Result<()> {
@@ -204,4 +235,125 @@ fn indicator_analysis_matches_python_behaviour() -> anyhow::Result<()> {
     assert_abs_diff_eq!(extract(&value, "pos"), 0.6142857142857143, epsilon = 1e-12);
 
     Ok(())
+}
+
+#[test]
+fn indicator_analysis_string_api_matches_enum() -> anyhow::Result<()> {
+    let frame = df! {
+        "count" => &[5.0, 10.0, 20.0],
+        "ffr" => &[0.1, 0.5, 0.9],
+        "pa" => &[0.2, 0.8, 0.4],
+        "pos" => &[0.3, 0.6, 0.7],
+        "deal_amount" => &[100.0, 400.0, 50.0],
+        "value" => &[1000.0, 200.0, 800.0],
+    }?;
+
+    let enum_result = indicator_analysis(&frame, IndicatorMethod::ValueWeighted)?;
+    let string_result = indicator_analysis_with_method(&frame, "value_weighted")?;
+
+    assert_eq!(
+        indicator_frame_to_map(&enum_result),
+        indicator_frame_to_map(&string_result)
+    );
+
+    Ok(())
+}
+
+#[test]
+fn risk_analysis_string_api_matches_struct_results() -> anyhow::Result<()> {
+    let returns = vec![0.01, -0.015, 0.02, -0.005];
+
+    let sum_metrics =
+        PerformanceMetrics::evaluate_with_mode(&returns, 252.0, AccumulationMode::Sum);
+    let sum_frame = risk_analysis(&returns, Some(252.0), None, Some("sum"))?;
+    let sum_map = metric_frame_to_map(&sum_frame);
+
+    assert_abs_diff_eq!(sum_map["mean"], sum_metrics.mean_return, epsilon = 1e-12);
+    assert_abs_diff_eq!(sum_map["std"], sum_metrics.std_dev, epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        sum_map["annualized_return"],
+        sum_metrics.annualized_return,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        sum_map["information_ratio"],
+        sum_metrics.information_ratio,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        sum_map["max_drawdown"],
+        sum_metrics.max_drawdown,
+        epsilon = 1e-12
+    );
+
+    let default_frame = risk_analysis(&returns, Some(252.0), None, None)?;
+    assert_eq!(sum_map, metric_frame_to_map(&default_frame));
+
+    let product_metrics =
+        PerformanceMetrics::evaluate_with_mode(&returns, 252.0, AccumulationMode::Product);
+    let product_frame = risk_analysis(&returns, Some(252.0), None, Some("product"))?;
+    let product_map = metric_frame_to_map(&product_frame);
+
+    assert_abs_diff_eq!(
+        product_map["mean"],
+        product_metrics.mean_return,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(product_map["std"], product_metrics.std_dev, epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        product_map["annualized_return"],
+        product_metrics.annualized_return,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        product_map["information_ratio"],
+        product_metrics.information_ratio,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        product_map["max_drawdown"],
+        product_metrics.max_drawdown,
+        epsilon = 1e-12
+    );
+
+    let freq_frame = risk_analysis(&returns, None, Some("2week"), Some("sum"))?;
+    let freq_metrics =
+        PerformanceMetrics::evaluate_with_frequency_str(&returns, "2week", AccumulationMode::Sum)?;
+    let freq_map = metric_frame_to_map(&freq_frame);
+
+    assert_abs_diff_eq!(freq_map["mean"], freq_metrics.mean_return, epsilon = 1e-12);
+    assert_abs_diff_eq!(freq_map["std"], freq_metrics.std_dev, epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        freq_map["annualized_return"],
+        freq_metrics.annualized_return,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        freq_map["information_ratio"],
+        freq_metrics.information_ratio,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        freq_map["max_drawdown"],
+        freq_metrics.max_drawdown,
+        epsilon = 1e-12
+    );
+
+    Ok(())
+}
+
+#[test]
+fn risk_analysis_requires_scaler_or_frequency() {
+    let returns = vec![0.01, -0.015, 0.02, -0.005];
+    let error = risk_analysis(&returns, None, None, Some("sum"))
+        .expect_err("missing scaler or frequency should error");
+    assert!(matches!(error, MetricsError::MissingFrequencyOrScaler));
+}
+
+#[test]
+fn risk_analysis_rejects_invalid_mode() {
+    let returns = vec![0.01, -0.015, 0.02, -0.005];
+    let error = risk_analysis(&returns, Some(252.0), None, Some("unsupported"))
+        .expect_err("invalid mode must error");
+    assert!(matches!(error, MetricsError::InvalidAccumulationMode(_)));
 }
