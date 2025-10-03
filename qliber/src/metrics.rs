@@ -1,6 +1,115 @@
+use std::str::FromStr;
+
+use polars::prelude::*;
 use rayon::prelude::*;
+use thiserror::Error;
 
 use crate::logging::log_event;
+
+#[derive(Debug, Error)]
+pub enum MetricsError {
+    #[error("unsupported frequency format: {0}")]
+    UnsupportedFrequency(String),
+    #[error("polars error: {0}")]
+    Polars(#[from] PolarsError),
+    #[error("indicator analysis requires column `{0}`")]
+    MissingColumn(String),
+    #[error("indicator analysis encountered zero total weight for {0:?}")]
+    ZeroWeights(IndicatorMethod),
+}
+
+pub type MetricsResult<T> = Result<T, MetricsError>;
+
+/// Supported evaluation frequencies mirroring Qlib's `Freq` helper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrequencyUnit {
+    Minute,
+    Day,
+    Week,
+    Month,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnalysisFrequency {
+    count: u32,
+    unit: FrequencyUnit,
+}
+
+impl AnalysisFrequency {
+    pub fn new(count: u32, unit: FrequencyUnit) -> Self {
+        let normalized_count = count.max(1);
+        Self {
+            count: normalized_count,
+            unit,
+        }
+    }
+
+    pub fn unit(&self) -> FrequencyUnit {
+        self.unit
+    }
+
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+
+    pub fn periods_per_year(&self) -> f64 {
+        let scaler = match self.unit {
+            FrequencyUnit::Minute => 240.0 * 238.0,
+            FrequencyUnit::Day => 238.0,
+            FrequencyUnit::Week => 50.0,
+            FrequencyUnit::Month => 12.0,
+        };
+        scaler / self.count as f64
+    }
+}
+
+impl FromStr for AnalysisFrequency {
+    type Err = MetricsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim().to_lowercase();
+        let digit_count = trimmed.chars().take_while(|c| c.is_ascii_digit()).count();
+
+        let (count_str, suffix) = trimmed.split_at(digit_count);
+        if suffix.is_empty() {
+            return Err(MetricsError::UnsupportedFrequency(trimmed));
+        }
+
+        let count: u32 = if count_str.is_empty() {
+            1
+        } else {
+            count_str
+                .parse()
+                .map_err(|_| MetricsError::UnsupportedFrequency(trimmed.clone()))?
+        };
+
+        let unit = match suffix {
+            "month" | "mon" => FrequencyUnit::Month,
+            "week" | "w" => FrequencyUnit::Week,
+            "day" | "d" => FrequencyUnit::Day,
+            "minute" | "min" => FrequencyUnit::Minute,
+            _ => return Err(MetricsError::UnsupportedFrequency(trimmed)),
+        };
+
+        Ok(Self::new(count, unit))
+    }
+}
+
+impl TryFrom<&str> for AnalysisFrequency {
+    type Error = MetricsError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::from_str(value)
+    }
+}
+
+/// Indicator weighting strategies matching Qlib's `indicator_analysis` helper.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndicatorMethod {
+    Mean,
+    AmountWeighted,
+    ValueWeighted,
+}
 
 /// Controls how returns are accumulated when computing performance statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +170,57 @@ impl PerformanceMetrics {
             AccumulationMode::Sum => Self::from_sum_mode(returns, periods_per_year),
             AccumulationMode::Product => Self::from_product_mode(returns, periods_per_year),
         }
+    }
+
+    pub fn evaluate_with_frequency(
+        returns: &[f64],
+        frequency: AnalysisFrequency,
+        mode: AccumulationMode,
+    ) -> Self {
+        let periods_per_year = frequency.periods_per_year();
+        let metrics = Self::evaluate_with_mode(returns, periods_per_year, mode);
+
+        log_event(
+            file!(),
+            "PerformanceMetrics",
+            "evaluate_with_frequency",
+            "metrics.evaluate",
+            line!(),
+            &format!(
+                "Evaluated returns with {:?} frequency (count={}) using {:?} mode",
+                frequency.unit(),
+                frequency.count(),
+                mode
+            ),
+            None,
+            "none",
+            "GET",
+        );
+
+        metrics
+    }
+
+    pub fn evaluate_with_frequency_str(
+        returns: &[f64],
+        freq: &str,
+        mode: AccumulationMode,
+    ) -> MetricsResult<Self> {
+        let frequency = AnalysisFrequency::try_from(freq)?;
+        let metrics = Ok(Self::evaluate_with_frequency(returns, frequency, mode));
+
+        log_event(
+            file!(),
+            "PerformanceMetrics",
+            "evaluate_with_frequency_str",
+            "metrics.evaluate",
+            line!(),
+            &format!("Parsed frequency `{freq}` into {:?}", frequency.unit()),
+            None,
+            "none",
+            "GET",
+        );
+
+        metrics
     }
 
     fn from_sum_mode(returns: &[f64], periods_per_year: f64) -> Self {
@@ -219,6 +379,126 @@ impl PerformanceMetrics {
     }
 }
 
+pub fn indicator_analysis(frame: &DataFrame, method: IndicatorMethod) -> MetricsResult<DataFrame> {
+    let count_weights = match require_column(frame, "count") {
+        Ok(column) => column,
+        Err(error) => {
+            log_event(
+                file!(),
+                "PerformanceMetrics",
+                "indicator_analysis",
+                "metrics.indicator",
+                line!(),
+                "Missing required `count` column for indicator analysis",
+                Some(&error.to_string()),
+                "none",
+                "GET",
+            );
+            return Err(error);
+        }
+    };
+
+    let weights = match method {
+        IndicatorMethod::Mean => count_weights.clone(),
+        IndicatorMethod::AmountWeighted => match require_column(frame, "deal_amount") {
+            Ok(column) => column,
+            Err(error) => {
+                log_event(
+                    file!(),
+                    "PerformanceMetrics",
+                    "indicator_analysis",
+                    "metrics.indicator",
+                    line!(),
+                    "Missing `deal_amount` column required for amount-weighted analysis",
+                    Some(&error.to_string()),
+                    "none",
+                    "GET",
+                );
+                return Err(error);
+            }
+        },
+        IndicatorMethod::ValueWeighted => match require_column(frame, "value") {
+            Ok(column) => column,
+            Err(error) => {
+                log_event(
+                    file!(),
+                    "PerformanceMetrics",
+                    "indicator_analysis",
+                    "metrics.indicator",
+                    line!(),
+                    "Missing `value` column required for value-weighted analysis",
+                    Some(&error.to_string()),
+                    "none",
+                    "GET",
+                );
+                return Err(error);
+            }
+        },
+    };
+
+    let ffr_values = require_column(frame, "ffr").inspect_err(|error| {
+        log_event(
+            file!(),
+            "PerformanceMetrics",
+            "indicator_analysis",
+            "metrics.indicator",
+            line!(),
+            "Missing `ffr` column required for indicator analysis",
+            Some(&error.to_string()),
+            "none",
+            "GET",
+        );
+    })?;
+    let pa_values = require_column(frame, "pa").inspect_err(|error| {
+        log_event(
+            file!(),
+            "PerformanceMetrics",
+            "indicator_analysis",
+            "metrics.indicator",
+            line!(),
+            "Missing `pa` column required for indicator analysis",
+            Some(&error.to_string()),
+            "none",
+            "GET",
+        );
+    })?;
+    let pos_values = require_column(frame, "pos").inspect_err(|error| {
+        log_event(
+            file!(),
+            "PerformanceMetrics",
+            "indicator_analysis",
+            "metrics.indicator",
+            line!(),
+            "Missing `pos` column required for indicator analysis",
+            Some(&error.to_string()),
+            "none",
+            "GET",
+        );
+    })?;
+
+    let ffr = weighted_average(&ffr_values, &weights, method, "ffr")?;
+    let pa = weighted_average(&pa_values, &weights, method, "pa")?;
+    let pos = weighted_average(&pos_values, &count_weights, IndicatorMethod::Mean, "pos")?;
+
+    let indicators = Series::new("indicator", &["ffr", "pa", "pos"]);
+    let values = Series::new("value", &[ffr, pa, pos]);
+    let result = DataFrame::new(vec![indicators, values])?;
+
+    log_event(
+        file!(),
+        "PerformanceMetrics",
+        "indicator_analysis",
+        "metrics.indicator",
+        line!(),
+        &format!("Computed indicator analysis using {:?} weighting", method),
+        None,
+        "none",
+        "GET",
+    );
+
+    Ok(result)
+}
+
 fn sample_variance(values: &[f64], mean: f64) -> f64 {
     if values.len() < 2 {
         return 0.0;
@@ -232,4 +512,67 @@ fn sample_variance(values: &[f64], mean: f64) -> f64 {
         })
         .sum::<f64>();
     sum_squares / (values.len() as f64 - 1.0)
+}
+
+fn require_column(frame: &DataFrame, name: &str) -> MetricsResult<Float64Chunked> {
+    let series = frame
+        .column(name)
+        .map_err(|_| MetricsError::MissingColumn(name.to_string()))?;
+    series_to_f64(series).map_err(Into::into)
+}
+
+fn series_to_f64(series: &Series) -> PolarsResult<Float64Chunked> {
+    if matches!(series.dtype(), DataType::Float64) {
+        Ok(series.f64()?.clone())
+    } else {
+        let casted = series.cast(&DataType::Float64)?;
+        Ok(casted.f64().expect("series cast to f64").clone())
+    }
+}
+
+fn weighted_average(
+    values: &Float64Chunked,
+    weights: &Float64Chunked,
+    method: IndicatorMethod,
+    indicator: &str,
+) -> MetricsResult<f64> {
+    let mut numerator = 0.0;
+    let mut denominator = 0.0;
+
+    for (value, weight) in values.into_iter().zip(weights.into_iter()) {
+        if let (Some(v), Some(w)) = (value, weight)
+            && v.is_finite()
+            && w.is_finite()
+        {
+            let weight_value = match method {
+                IndicatorMethod::AmountWeighted | IndicatorMethod::ValueWeighted => w.abs(),
+                IndicatorMethod::Mean => w,
+            };
+
+            if weight_value.is_finite() {
+                numerator += v * weight_value;
+                denominator += weight_value;
+            }
+        }
+    }
+
+    if denominator.abs() <= f64::EPSILON {
+        log_event(
+            file!(),
+            "PerformanceMetrics",
+            "weighted_average",
+            "metrics.indicator",
+            line!(),
+            &format!(
+                "Encountered zero total weight while computing {indicator} with {:?} weighting",
+                method
+            ),
+            None,
+            "none",
+            "GET",
+        );
+        return Err(MetricsError::ZeroWeights(method));
+    }
+
+    Ok(numerator / denominator)
 }
