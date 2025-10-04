@@ -18,3 +18,4 @@
 - [x] Add string-based compatibility wrappers for risk and indicator analysis APIs
 - [x] Extend tests to validate scaler/frequency handling and Python mode parity
 - [x] Document the parity helpers in the README for downstream consumers
+- [x] Ensure Rust risk metrics filter non-finite returns to match Python semantics

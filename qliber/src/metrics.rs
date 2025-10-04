@@ -176,14 +176,16 @@ impl PerformanceMetrics {
         periods_per_year: f64,
         mode: AccumulationMode,
     ) -> Self {
-        if returns.is_empty() {
+        let (clean_returns, filtered_out) = sanitize_returns(returns);
+
+        if clean_returns.is_empty() {
             log_event(
                 file!(),
                 "PerformanceMetrics",
                 "evaluate_with_mode",
                 "metrics.evaluate",
                 line!(),
-                "Received empty returns series; returning zeroed metrics",
+                "Received empty or non-finite returns; returning zeroed metrics",
                 None,
                 "none",
                 "GET",
@@ -200,9 +202,23 @@ impl PerformanceMetrics {
             };
         }
 
+        if filtered_out > 0 {
+            log_event(
+                file!(),
+                "PerformanceMetrics",
+                "evaluate_with_mode",
+                "metrics.evaluate",
+                line!(),
+                &format!("Filtered {filtered_out} non-finite returns prior to evaluation"),
+                None,
+                "none",
+                "GET",
+            );
+        }
+
         match mode {
-            AccumulationMode::Sum => Self::from_sum_mode(returns, periods_per_year),
-            AccumulationMode::Product => Self::from_product_mode(returns, periods_per_year),
+            AccumulationMode::Sum => Self::from_sum_mode(&clean_returns, periods_per_year),
+            AccumulationMode::Product => Self::from_product_mode(&clean_returns, periods_per_year),
         }
     }
 
@@ -742,6 +758,21 @@ fn series_to_f64(series: &Series) -> PolarsResult<Float64Chunked> {
         let casted = series.cast(&DataType::Float64)?;
         Ok(casted.f64().expect("series cast to f64").clone())
     }
+}
+
+fn sanitize_returns(returns: &[f64]) -> (Vec<f64>, usize) {
+    let mut cleaned = Vec::with_capacity(returns.len());
+    let mut filtered = 0;
+
+    for value in returns.iter().copied() {
+        if value.is_finite() {
+            cleaned.push(value);
+        } else {
+            filtered += 1;
+        }
+    }
+
+    (cleaned, filtered)
 }
 
 fn weighted_average(
