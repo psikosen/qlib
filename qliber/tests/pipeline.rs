@@ -357,3 +357,81 @@ fn risk_analysis_rejects_invalid_mode() {
         .expect_err("invalid mode must error");
     assert!(matches!(error, MetricsError::InvalidAccumulationMode(_)));
 }
+
+#[test]
+fn metrics_ignore_non_finite_returns_like_python() -> anyhow::Result<()> {
+    let contaminated = vec![0.01, f64::NAN, -0.015, f64::INFINITY, 0.02, f64::NAN];
+    let filtered: Vec<f64> = contaminated
+        .iter()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
+
+    let expected_sum =
+        PerformanceMetrics::evaluate_with_mode(&filtered, 252.0, AccumulationMode::Sum);
+    let actual_sum =
+        PerformanceMetrics::evaluate_with_mode(&contaminated, 252.0, AccumulationMode::Sum);
+
+    assert_abs_diff_eq!(
+        actual_sum.mean_return,
+        expected_sum.mean_return,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(actual_sum.std_dev, expected_sum.std_dev, epsilon = 1e-12);
+    assert_abs_diff_eq!(
+        actual_sum.annualized_return,
+        expected_sum.annualized_return,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        actual_sum.information_ratio,
+        expected_sum.information_ratio,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        actual_sum.max_drawdown,
+        expected_sum.max_drawdown,
+        epsilon = 1e-12
+    );
+
+    let expected_product =
+        PerformanceMetrics::evaluate_with_mode(&filtered, 252.0, AccumulationMode::Product);
+    let actual_product =
+        PerformanceMetrics::evaluate_with_mode(&contaminated, 252.0, AccumulationMode::Product);
+
+    assert_abs_diff_eq!(
+        actual_product.mean_return,
+        expected_product.mean_return,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(
+        actual_product.std_dev,
+        expected_product.std_dev,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(
+        actual_product.annualized_return,
+        expected_product.annualized_return,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        actual_product.information_ratio,
+        expected_product.information_ratio,
+        epsilon = 1e-9
+    );
+    assert_abs_diff_eq!(
+        actual_product.max_drawdown,
+        expected_product.max_drawdown,
+        epsilon = 1e-12
+    );
+
+    let expected_frame = risk_analysis(&filtered, Some(252.0), None, Some("sum"))?;
+    let actual_frame = risk_analysis(&contaminated, Some(252.0), None, Some("sum"))?;
+
+    assert_eq!(
+        metric_frame_to_map(&actual_frame),
+        metric_frame_to_map(&expected_frame)
+    );
+
+    Ok(())
+}
