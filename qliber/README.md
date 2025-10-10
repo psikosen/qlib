@@ -18,6 +18,7 @@ Microsoft Qlib delivers a research platform composed of three pillars: dataset i
 qliber mirrors these building blocks with the following Rust-native equivalents:
 
 - **Data Server → `dataset` module:** lazy CSV ingestion, column projection, and temporal filtering.
+- **Provider Infrastructure → `provider` module:** instrument registry, trading calendars, in-memory feature caching, and point-in-time storage primitives mirroring `qlib.data` providers.
 - **Feature Library → `features` module:** rolling statistics, return computation, and normalization helpers.
 - **Workflow & Evaluation → `metrics` module:** cumulative/annualized return aggregation, Sharpe/information ratios,
   and drawdown metrics with both arithmetic and geometric accumulation modes, frequency-aware scaling,
@@ -38,9 +39,12 @@ qliber/
 │   ├── features.rs     # Feature engineering helpers (returns, moving averages, z-scores)
 │   ├── logging.rs      # Structured logging initialization and helpers
 │   ├── metrics.rs      # Performance metric calculations (cumulative, annualized, ratios, drawdowns)
+│   ├── portfolio.rs    # Portfolio analytics matching qlib.contrib.evaluate_portfolio
+│   ├── provider.rs     # Trading calendars, instrument registry, feature caching, and PIT storage
 │   └── lib.rs          # Public crate exports
 └── tests
-    └── pipeline.rs     # End-to-end regression test covering the primary flow
+    ├── pipeline.rs     # End-to-end regression test covering the primary flow
+    └── provider.rs     # Provider infrastructure unit coverage (calendars, cache, PIT)
 ```
 
 ## Usage

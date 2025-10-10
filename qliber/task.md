@@ -23,7 +23,7 @@
 - [x] Port portfolio analytics (position valuation, return series, annual metrics) to Rust
 - [x] Expand regression tests to cover the new portfolio analytics surface
 - [x] Document the portfolio module additions in the README
-- [ ] Port Qlib's provider infrastructure (calendars, instruments, feature caching/backends, and PIT storage) into Rust's dataset layer to match `qlib.data.data` and `qlib.data.storage` capabilities
+- [x] Port Qlib's provider infrastructure (calendars, instruments, feature caching/backends, and PIT storage) into Rust's dataset layer to match `qlib.data.data` and `qlib.data.storage` capabilities
 - [ ] Implement the configurable dataset handler/loader/processor pipeline (DataHandler, DataLoader, Processor stacks) to mirror `qlib.data.dataset` semantics for feature/label management
 - [ ] Recreate the expression operator engine (Operators, rolling/expanding stats, percentile utilities) covering the breadth of `qlib.data.ops`
 - [ ] Add remote data server compatibility, including the socket.io client protocol exposed in `qlib.data.client`, for distributed data access
