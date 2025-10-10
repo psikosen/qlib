@@ -22,6 +22,8 @@ qliber mirrors these building blocks with the following Rust-native equivalents:
 - **Workflow & Evaluation → `metrics` module:** cumulative/annualized return aggregation, Sharpe/information ratios,
   and drawdown metrics with both arithmetic and geometric accumulation modes, frequency-aware scaling,
   and trade indicator weighting analysis that mirrors Qlib's Python helpers.
+- **Portfolio Evaluation → `portfolio` module:** position valuation, portfolio-level return series, Sharpe/alpha/beta,
+  and information coefficient utilities aligned with `qlib.contrib.evaluate_portfolio` semantics.
 
 This initial slice prioritizes correctness and extensibility; additional modules such as model training or portfolio optimization can be layered atop these primitives in follow-up iterations.
 
@@ -46,8 +48,10 @@ qliber/
 ```rust
 use chrono::Utc;
 use qliber::{
-    indicator_analysis, with_daily_returns, with_moving_average, with_z_score, AccumulationMode,
-    IndicatorMethod, MarketData, PerformanceMetrics,
+    alpha, annual_return_from_returns, beta, indicator_analysis, max_drawdown_from_returns,
+    rank_information_coefficient, with_daily_returns, with_moving_average, with_z_score,
+    AccumulationMode, Holding, IndicatorMethod, InterestMethod, MarketData, PerformanceMetrics,
+    PortfolioSnapshot, PriceMatrix,
 };
 
 fn main() -> anyhow::Result<()> {
@@ -91,6 +95,46 @@ fn main() -> anyhow::Result<()> {
     let value_weighted = qliber::indicator_analysis_with_method(&trade_frame, "value_weighted")?;
     println!("Risk analysis:\n{}", risk_frame);
     println!("Value-weighted indicators:\n{}", value_weighted);
+
+    // Portfolio evaluation helpers mirroring qlib.contrib.evaluate_portfolio
+    let price_frame = polars::df! {
+        "date" => &["2024-01-02", "2024-01-03"],
+        "AAA" => &[10.0, 11.0],
+        "BBB" => &[20.0, 21.0],
+    }?;
+    let prices = PriceMatrix::from_dataframe(&price_frame, "date")?;
+    let mut day1 = PortfolioSnapshot::with_cash(50.0);
+    day1.insert_holding("AAA", Holding::new(5.0, None));
+    let mut day2 = PortfolioSnapshot::with_cash(50.0);
+    day2.insert_holding("AAA", Holding::new(5.0, None));
+    let mut positions = std::collections::BTreeMap::new();
+    positions.insert(chrono::NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(), day1);
+    positions.insert(chrono::NaiveDate::from_ymd_opt(2024, 1, 3).unwrap(), day2);
+
+    let portfolio_returns = qliber::daily_return_series(&positions, &prices, 100.0)?;
+    let sharpe = qliber::sharpe_ratio_from_returns(
+        &portfolio_returns.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
+        0.02,
+        InterestMethod::Compound,
+        252.0,
+    );
+    let alpha_value = alpha(
+        &returns,
+        &returns, // placeholder benchmark
+        0.02,
+        InterestMethod::Compound,
+        252.0,
+    )?;
+    let beta_value = beta(&returns, &returns)?;
+    let rank_ic = rank_information_coefficient(&returns, &returns)?;
+    let max_dd = max_drawdown_from_returns(&returns);
+    let annual = annual_return_from_returns(&returns, InterestMethod::Compound, 252.0);
+
+    println!("Portfolio daily returns: {:?}", portfolio_returns);
+    println!("Sharpe ratio: {:.3}", sharpe);
+    println!("Alpha: {:.3}, Beta: {:.3}", alpha_value, beta_value);
+    println!("Rank IC: {:.3}, Max Drawdown: {:.3}", rank_ic, max_dd);
+    println!("Annualized return: {:.3}", annual);
 
     Ok(())
 }

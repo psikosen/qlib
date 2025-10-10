@@ -19,3 +19,7 @@
 - [x] Extend tests to validate scaler/frequency handling and Python mode parity
 - [x] Document the parity helpers in the README for downstream consumers
 - [x] Ensure Rust risk metrics filter non-finite returns to match Python semantics
+- [x] Review qlib.contrib.evaluate_portfolio parity gaps and define required Rust APIs
+- [x] Port portfolio analytics (position valuation, return series, annual metrics) to Rust
+- [x] Expand regression tests to cover the new portfolio analytics surface
+- [x] Document the portfolio module additions in the README
