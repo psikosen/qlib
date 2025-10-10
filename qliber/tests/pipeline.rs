@@ -343,6 +343,21 @@ fn risk_analysis_string_api_matches_struct_results() -> anyhow::Result<()> {
 }
 
 #[test]
+fn risk_analysis_prefers_scaler_over_frequency() -> anyhow::Result<()> {
+    let returns = vec![0.01, -0.015, 0.02, -0.005];
+
+    let scaler_only = risk_analysis(&returns, Some(252.0), None, Some("sum"))?;
+    let with_frequency = risk_analysis(&returns, Some(252.0), Some("week"), Some("sum"))?;
+
+    assert_eq!(
+        metric_frame_to_map(&scaler_only),
+        metric_frame_to_map(&with_frequency)
+    );
+
+    Ok(())
+}
+
+#[test]
 fn risk_analysis_requires_scaler_or_frequency() {
     let returns = vec![0.01, -0.015, 0.02, -0.005];
     let error = risk_analysis(&returns, None, None, Some("sum"))
