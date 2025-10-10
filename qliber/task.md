@@ -34,3 +34,4 @@
 - [x] Port the reinforcement learning framework (trainer vessel, simulators, order execution APIs) defined under `qlib.rl`
 - [x] Ship CLI tooling (`qrun`, data preparation helpers) to orchestrate workflows like the Python `qlib.cli` package
 - [x] Reimplement the contrib data handlers and factor templates (e.g., Alpha158/Alpha360 processors) from `qlib.contrib`
+- [x] Add integration coverage for the `qrun` CLI training workflow
