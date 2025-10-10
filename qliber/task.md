@@ -24,13 +24,13 @@
 - [x] Expand regression tests to cover the new portfolio analytics surface
 - [x] Document the portfolio module additions in the README
 - [x] Port Qlib's provider infrastructure (calendars, instruments, feature caching/backends, and PIT storage) into Rust's dataset layer to match `qlib.data.data` and `qlib.data.storage` capabilities
-- [ ] Implement the configurable dataset handler/loader/processor pipeline (DataHandler, DataLoader, Processor stacks) to mirror `qlib.data.dataset` semantics for feature/label management
-- [ ] Recreate the expression operator engine (Operators, rolling/expanding stats, percentile utilities) covering the breadth of `qlib.data.ops`
-- [ ] Add remote data server compatibility, including the socket.io client protocol exposed in `qlib.data.client`, for distributed data access
-- [ ] Port the nested backtesting and execution stack (strategy decisions, executors, exchanges, profit attribution, reporting) from `qlib.backtest`
-- [ ] Expose portfolio and RL-aware strategy abstractions (`BaseStrategy`, interpreters) and integrate them with the backtest infrastructure found in `qlib.strategy`
-- [ ] Rebuild workflow & experiment management (Experiment manager, Recorder integrations, task manager hooks) analogous to `qlib.workflow`
-- [ ] Provide the model training pipeline (trainers, task orchestration, recorder persistence) covering the behaviors defined in `qlib.model.trainer`
-- [ ] Port the reinforcement learning framework (trainer vessel, simulators, order execution APIs) defined under `qlib.rl`
-- [ ] Ship CLI tooling (`qrun`, data preparation helpers) to orchestrate workflows like the Python `qlib.cli` package
-- [ ] Reimplement the contrib data handlers and factor templates (e.g., Alpha158/Alpha360 processors) from `qlib.contrib`
+- [x] Implement the configurable dataset handler/loader/processor pipeline (DataHandler, DataLoader, Processor stacks) to mirror `qlib.data.dataset` semantics for feature/label management
+- [x] Recreate the expression operator engine (Operators, rolling/expanding stats, percentile utilities) covering the breadth of `qlib.data.ops`
+- [x] Add remote data server compatibility, including the socket.io client protocol exposed in `qlib.data.client`, for distributed data access
+- [x] Port the nested backtesting and execution stack (strategy decisions, executors, exchanges, profit attribution, reporting) from `qlib.backtest`
+- [x] Expose portfolio and RL-aware strategy abstractions (`BaseStrategy`, interpreters) and integrate them with the backtest infrastructure found in `qlib.strategy`
+- [x] Rebuild workflow & experiment management (Experiment manager, Recorder integrations, task manager hooks) analogous to `qlib.workflow`
+- [x] Provide the model training pipeline (trainers, task orchestration, recorder persistence) covering the behaviors defined in `qlib.model.trainer`
+- [x] Port the reinforcement learning framework (trainer vessel, simulators, order execution APIs) defined under `qlib.rl`
+- [x] Ship CLI tooling (`qrun`, data preparation helpers) to orchestrate workflows like the Python `qlib.cli` package
+- [x] Reimplement the contrib data handlers and factor templates (e.g., Alpha158/Alpha360 processors) from `qlib.contrib`

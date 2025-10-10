@@ -16,13 +16,15 @@ use qliber::metrics::{
 };
 
 fn metric_frame_to_map(frame: &DataFrame) -> HashMap<String, f64> {
+    let risk = frame.column("risk").unwrap().f64().unwrap();
+    let risk_iter = risk.into_iter();
     frame
         .column("metric")
         .unwrap()
         .utf8()
         .unwrap()
         .into_iter()
-        .zip(frame.column("risk").unwrap().f64().unwrap().into_iter())
+        .zip(risk_iter)
         .filter_map(|(metric, value)| match (metric, value) {
             (Some(metric), Some(value)) => Some((metric.to_string(), value)),
             _ => None,
@@ -31,13 +33,15 @@ fn metric_frame_to_map(frame: &DataFrame) -> HashMap<String, f64> {
 }
 
 fn indicator_frame_to_map(frame: &DataFrame) -> HashMap<String, f64> {
+    let values = frame.column("value").unwrap().f64().unwrap();
+    let values_iter = values.into_iter();
     frame
         .column("indicator")
         .unwrap()
         .utf8()
         .unwrap()
         .into_iter()
-        .zip(frame.column("value").unwrap().f64().unwrap().into_iter())
+        .zip(values_iter)
         .filter_map(|(metric, value)| match (metric, value) {
             (Some(metric), Some(value)) => Some((metric.to_string(), value)),
             _ => None,
@@ -209,12 +213,14 @@ fn indicator_analysis_matches_python_behaviour() -> anyhow::Result<()> {
     let value = indicator_analysis(&frame, IndicatorMethod::ValueWeighted)?;
 
     let extract = |df: &DataFrame, indicator: &str| -> f64 {
+        let value_series = df.column("value").unwrap().f64().unwrap();
+        let value_iter = value_series.into_iter();
         df.column("indicator")
             .unwrap()
             .utf8()
             .unwrap()
             .into_iter()
-            .zip(df.column("value").unwrap().f64().unwrap().into_iter())
+            .zip(value_iter)
             .find_map(|(name, value)| match (name, value) {
                 (Some(name), Some(value)) if name == indicator => Some(value),
                 _ => None,
