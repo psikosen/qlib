@@ -3,6 +3,7 @@
 //! and structured logging tailored for quantitative research pipelines.
 
 pub mod backtest;
+pub mod config;
 pub mod contrib;
 pub mod dataset;
 pub mod features;
@@ -20,6 +21,10 @@ pub use backtest::{
     BacktestError, BacktestReport, BacktestResult, Backtester, ExecutionReport, MarketEvent,
     MarketSnapshot, OrderSignal, PipelineStrategy, RLStrategy, SignalInterpreter, SimpleExecutor,
     StaticRLStrategy, Strategy, ThresholdInterpreter,
+};
+pub use config::{
+    ConfigSnapshot, DefaultConfig, InitOptions, REG_CN, REG_TW, REG_US, Region, config_snapshot,
+    init, with_data_path,
 };
 pub use contrib::{Alpha158Processor, Alpha360Processor};
 pub use dataset::{

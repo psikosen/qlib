@@ -6,9 +6,8 @@ use anyhow::Result;
 use polars::prelude::*;
 use serde::Deserialize;
 
-use qliber::logging;
 use qliber::workflow::ExperimentManager;
-use qliber::{MeanModel, Trainer};
+use qliber::{DefaultConfig, InitOptions, MeanModel, Trainer, init};
 
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -18,7 +17,7 @@ struct Config {
 }
 
 fn main() -> Result<()> {
-    logging::init_logging()?;
+    init(DefaultConfig::Client, InitOptions::default())?;
     let args: Vec<String> = env::args().collect();
     let mut config_path: Option<PathBuf> = None;
     let mut idx = 1;

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use chrono::{DateTime, NaiveDate, Utc};
 use polars::prelude::*;
@@ -8,6 +8,100 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::logging::log_event;
+
+type CacheClearer = Arc<dyn Fn() -> ProviderResult<()> + Send + Sync>;
+
+static FEATURE_CACHE_REGISTRY: OnceLock<RwLock<Vec<CacheClearer>>> = OnceLock::new();
+
+fn cache_registry() -> &'static RwLock<Vec<CacheClearer>> {
+    FEATURE_CACHE_REGISTRY.get_or_init(|| RwLock::new(Vec::new()))
+}
+
+fn register_cache_clearer(clearer: CacheClearer) {
+    match cache_registry().write() {
+        Ok(mut guard) => guard.push(clearer),
+        Err(_) => {
+            log_event(
+                file!(),
+                "CacheRegistry",
+                "register",
+                "provider.cache",
+                line!(),
+                "Failed to register cache clearer due to poisoned lock",
+                Some("lock poisoned"),
+                "none",
+                "POST",
+            );
+        }
+    }
+}
+
+pub fn clear_registered_caches() -> ProviderResult<()> {
+    let clearers = match cache_registry().read() {
+        Ok(guard) => guard.iter().cloned().collect::<Vec<_>>(),
+        Err(_) => {
+            let message = "cache registry lock poisoned".to_string();
+            log_event(
+                file!(),
+                "CacheRegistry",
+                "clear",
+                "provider.cache",
+                line!(),
+                &message,
+                Some(&message),
+                "none",
+                "DELETE",
+            );
+            return Err(ProviderError::FeatureBackend(message));
+        }
+    };
+
+    let mut errors = Vec::new();
+    for clearer in &clearers {
+        if let Err(err) = clearer() {
+            errors.push(err);
+        }
+    }
+
+    if errors.is_empty() {
+        log_event(
+            file!(),
+            "CacheRegistry",
+            "clear",
+            "provider.cache",
+            line!(),
+            &format!("Cleared {} registered feature caches", clearers.len()),
+            None,
+            "post",
+            "DELETE",
+        );
+        Ok(())
+    } else {
+        let message = errors
+            .into_iter()
+            .map(|err| err.to_string())
+            .collect::<Vec<_>>()
+            .join("; ");
+        log_event(
+            file!(),
+            "CacheRegistry",
+            "clear",
+            "provider.cache",
+            line!(),
+            &message,
+            Some(&message),
+            "none",
+            "DELETE",
+        );
+        Err(ProviderError::FeatureBackend(message))
+    }
+}
+
+fn register_backend_for_clearing<B: FeatureBackend + 'static>(backend: &Arc<B>) {
+    let backend = Arc::clone(backend);
+    let clearer: CacheClearer = Arc::new(move || backend.clear_all());
+    register_cache_clearer(clearer);
+}
 
 type PitMap = HashMap<String, BTreeMap<DateTime<Utc>, DataFrame>>;
 
@@ -204,6 +298,7 @@ pub trait FeatureBackend: Send + Sync {
     fn get(&self, key: &FeatureKey) -> ProviderResult<Option<DataFrame>>;
     fn set(&self, key: FeatureKey, frame: DataFrame) -> ProviderResult<()>;
     fn invalidate(&self, key: &FeatureKey) -> ProviderResult<()>;
+    fn clear_all(&self) -> ProviderResult<()>;
 }
 
 #[derive(Default)]
@@ -261,6 +356,27 @@ impl FeatureBackend for InMemoryFeatureBackend {
             "provider.feature",
             line!(),
             &format!("Invalidated feature {} for {}", key.feature, key.instrument),
+            None,
+            "post",
+            "DELETE",
+        );
+        Ok(())
+    }
+
+    fn clear_all(&self) -> ProviderResult<()> {
+        let mut guard = self
+            .store
+            .write()
+            .map_err(|_| ProviderError::FeatureBackend("lock poisoned".into()))?;
+        let cleared = guard.len();
+        guard.clear();
+        log_event(
+            file!(),
+            "InMemoryFeatureBackend",
+            "clear_all",
+            "provider.feature",
+            line!(),
+            &format!("Cleared {cleared} cached feature frames"),
             None,
             "post",
             "DELETE",
@@ -373,6 +489,7 @@ pub struct DataProvider<B: FeatureBackend + 'static> {
 
 impl<B: FeatureBackend + 'static> DataProvider<B> {
     pub fn new(calendar: TradingCalendar, backend: Arc<B>) -> Self {
+        register_backend_for_clearing(&backend);
         Self {
             calendar,
             instruments: InstrumentStore::default(),
@@ -387,6 +504,7 @@ impl<B: FeatureBackend + 'static> DataProvider<B> {
         backend: Arc<B>,
         pit_store: PitStore,
     ) -> Self {
+        register_backend_for_clearing(&backend);
         Self {
             calendar,
             instruments,
