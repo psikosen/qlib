@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use anyhow::anyhow;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use tracing::info;
+use tracing::{Level, info};
 use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::Result;
@@ -27,15 +27,29 @@ pub struct LogEvent<'a> {
     pub derived: &'a str,
 }
 
-/// Initialize tracing subscriber emitting JSON records that follow the required schema.
+/// Initialize tracing subscriber emitting JSON records with the configured filter.
 ///
 /// Calling this function multiple times is safe; only the first invocation installs the
 /// subscriber.
 pub fn init_logging() -> Result<()> {
-    let result = SUBSCRIBER.get_or_init(|| {
-        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    init_logging_with_filter(None, None)
+}
+
+/// Initialize tracing subscriber with an explicit filter string or level override.
+pub fn init_logging_with_filter(filter: Option<&str>, level: Option<Level>) -> Result<()> {
+    let filter_string = filter
+        .map(|value| value.to_string())
+        .or_else(|| level.map(|lvl| lvl.to_string().to_lowercase()));
+
+    let result = SUBSCRIBER.get_or_init(move || {
+        let env_filter = if let Some(ref pattern) = filter_string {
+            EnvFilter::try_new(pattern.clone()).map_err(|error| error.to_string())?
+        } else {
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+        };
+
         fmt()
-            .with_env_filter(filter)
+            .with_env_filter(env_filter)
             .json()
             .with_current_span(false)
             .with_span_list(false)

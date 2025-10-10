@@ -59,7 +59,7 @@ use qliber::{
 };
 
 fn main() -> anyhow::Result<()> {
-    qliber::logging::init_logging()?;
+    qliber::init(qliber::DefaultConfig::Client, qliber::InitOptions::default())?;
     let market = MarketData::from_csv("data/market.csv")?;
     let filtered = market.filter_date_range(
         "timestamp",
@@ -147,6 +147,21 @@ fn main() -> anyhow::Result<()> {
 The `risk_analysis` and `indicator_analysis_with_method` helpers accept the same string-based
 options as Qlib's Python API, making it straightforward to port workflows that rely on
 `mode="sum"/"product"` or indicator weighting strings without changing call sites.
+
+### Configuration
+
+`qliber::init` mirrors the behavior of `qlib.config` and `qlib.init` by providing global
+configuration, logging initialization, and cache management:
+
+- Select a `DefaultConfig` (`Client` or `Server`) and override parameters with
+  `InitOptions` (provider URIs, mount paths, logging level/filter, cache settings, and
+  computation kernels).
+- Control the geographic preset via the exported `REG_CN`, `REG_US`, and `REG_TW`
+  region constants.
+- Automatically clear registered in-memory feature caches on initialization, matching the
+  Python `clear_mem_cache` semantics.
+- Query resolved provider and mount paths through `qliber::config_snapshot()` or by using
+  `qliber::with_data_path` to inspect file-system mappings.
 
 ## Development
 
