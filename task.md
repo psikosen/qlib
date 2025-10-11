@@ -7,3 +7,5 @@
 - [x] Summarize changes and testing results.
 - [x] Harden PIT data collector against missing optional dependencies.
 - [x] Re-run full pytest suite after dependency guard changes (fails due to missing offline dataset assets).
+- [x] Audit qliber parity for LLM/gguf requirements and record gaps.
+- [x] Add Rust-side build orchestration script for reproducible releases.

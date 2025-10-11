@@ -7,6 +7,7 @@ pub mod config;
 pub mod contrib;
 pub mod dataset;
 pub mod features;
+pub mod llm;
 pub mod logging;
 pub mod metrics;
 pub mod ops;
@@ -33,6 +34,9 @@ pub use dataset::{
     ProcessorChain, ProcessorRef, RenameProcessor, SelectColumnsProcessor,
 };
 pub use features::{with_daily_returns, with_moving_average, with_z_score};
+#[cfg(feature = "gguf")]
+pub use llm::GgufRunner;
+pub use llm::{GenerationOptions, LlmError, OllamaClient};
 pub use metrics::{
     AccumulationMode, AnalysisFrequency, FrequencyUnit, IndicatorMethod, MetricsError,
     MetricsResult, PerformanceMetrics, indicator_analysis, indicator_analysis_with_method,
