@@ -175,6 +175,49 @@ trainer.train(&features, &labels)?;
 learning rate, tree depth, regularization, and sampling hyper-parameters without depending
 on SmartCore directly.
 
+For dynamic backends, `GLOBAL_TRAINER_REGISTRY` mirrors Python's adapter registry. Custom
+frameworks can be registered alongside the bundled `mean` and `xgboost` adapters using the
+`TrainerRequest` configuration surface:
+
+```rust
+use std::sync::Arc;
+use serde_json::json;
+use qliber::{
+    MeanModel, TrainerAdapter, TrainerRequest, TrainingError, TrainingResult,
+    GLOBAL_TRAINER_REGISTRY,
+};
+
+struct CustomMean;
+
+impl TrainerAdapter for CustomMean {
+    fn create(&self, request: &TrainerRequest) -> TrainingResult<Box<dyn qliber::TrainableModel>> {
+        if request.label_column().is_empty() {
+            return Err(TrainingError::Model("missing label".into()));
+        }
+        Ok(Box::new(MeanModel::new(request.label_column().to_string())))
+    }
+}
+
+GLOBAL_TRAINER_REGISTRY.register_adapter("custom-mean", Arc::new(CustomMean));
+let request = TrainerRequest::new("label", vec!["feature".to_string()])
+    .with_parameters(json!({"n_estimators": 200, "learning_rate": 0.05}));
+let mut model = GLOBAL_TRAINER_REGISTRY.create("xgboost", &request)?;
+```
+
+Once a model is trained, the permutation-based interpreter reproduces the feature
+importance utilities from `qlib.model.interpret`:
+
+```rust
+use qliber::{PermutationFeatureInterpreter, TrainableModel};
+
+let mut interpreter = PermutationFeatureInterpreter::new(&model, "label")
+    .with_feature_columns(vec!["feature".to_string()])
+    .with_random_seed(42)
+    .with_repeats(8);
+let importances = interpreter.feature_importance(&features, &labels)?;
+println!("Top feature: {} -> {:.4}", importances[0].feature, importances[0].importance);
+```
+
 ### Configuration
 
 `qliber::init` mirrors the behavior of `qlib.config` and `qlib.init` by providing global

@@ -22,9 +22,11 @@ fn init_respects_skip_if_registered() -> anyhow::Result<()> {
     reset_for_tests();
     init(DefaultConfig::Client, InitOptions::default())?;
 
-    let mut options = InitOptions::default();
-    options.skip_if_registered = true;
-    options.logging_level = Some(Level::DEBUG);
+    let options = InitOptions {
+        skip_if_registered: true,
+        logging_level: Some(Level::DEBUG),
+        ..Default::default()
+    };
     init(DefaultConfig::Server, options)?;
 
     let snapshot = config_snapshot().expect("config snapshot available");

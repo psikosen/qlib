@@ -7,6 +7,7 @@ pub mod config;
 pub mod contrib;
 pub mod dataset;
 pub mod features;
+pub mod interpret;
 pub mod llm;
 pub mod logging;
 pub mod metrics;
@@ -34,6 +35,7 @@ pub use dataset::{
     ProcessorChain, ProcessorRef, RenameProcessor, SelectColumnsProcessor,
 };
 pub use features::{with_daily_returns, with_moving_average, with_z_score};
+pub use interpret::{FeatureImportance, FeatureInterpreter, PermutationFeatureInterpreter};
 #[cfg(feature = "gguf")]
 pub use llm::GgufRunner;
 pub use llm::{GenerationOptions, LlmError, OllamaClient};
@@ -59,8 +61,9 @@ pub use rl::{
     Agent, CounterEnvironment, Environment, IncrementAgent, RlError, RlResult, RlTrainer,
 };
 pub use trainer::{
-    MeanModel, TrainableModel, Trainer, TrainingError, TrainingResult, XgBoostModel,
-    XgBoostObjective, XgBoostParameters,
+    GLOBAL_TRAINER_REGISTRY, MeanModel, TrainableModel, Trainer, TrainerAdapter, TrainerRegistry,
+    TrainerRequest, TrainingError, TrainingResult, XgBoostModel, XgBoostObjective,
+    XgBoostParameters,
 };
 pub use workflow::{
     ExperimentManager, ExperimentRecord, Recorder, TaskManager, WorkflowError, WorkflowResult,

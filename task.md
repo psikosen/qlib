@@ -9,3 +9,5 @@
 - [x] Re-run full pytest suite after dependency guard changes (fails due to missing offline dataset assets).
 - [x] Audit qliber parity for LLM/gguf requirements and record gaps.
 - [x] Add Rust-side build orchestration script for reproducible releases.
+- [x] Extend the trainer registry with pluggable adapters for external ML frameworks.
+- [x] Port model interpretation utilities (`qlib/model/interpret`) into qliber.

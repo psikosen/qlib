@@ -22,8 +22,10 @@ fn ollama_client_generates_with_options() {
     });
 
     let client = OllamaClient::new(server.base_url(), "test").expect("client");
-    let mut options = GenerationOptions::default();
-    options.max_tokens = Some(16);
+    let options = GenerationOptions {
+        max_tokens: Some(16),
+        ..Default::default()
+    };
     let response = client
         .generate_with_options("hello", &options)
         .expect("generation");
@@ -46,8 +48,10 @@ fn ollama_client_supports_system_prompt() {
     });
 
     let client = OllamaClient::new(server.base_url(), "phi").expect("client");
-    let mut options = GenerationOptions::default();
-    options.system_prompt = Some("assistant".to_string());
+    let options = GenerationOptions {
+        system_prompt: Some("assistant".to_string()),
+        ..Default::default()
+    };
     let response = client
         .generate_with_options("question", &options)
         .expect("generation");
