@@ -172,3 +172,40 @@ cargo test
 ```
 
 The integration test exercises the full data pipeline using temporary CSV inputs to ensure end-to-end correctness.
+
+## Large Language Model integration
+
+`qliber::llm` provides optional tooling to run natural-language models alongside the
+quantitative pipeline:
+
+- `OllamaClient` issues blocking requests to a local Ollama runtime, enabling reuse of
+  chat or instruct models already managed by Ollama.
+- `GgufRunner` (guarded behind the `gguf` Cargo feature) loads GGUF checkpoints directly
+  through [`llama.cpp`](https://github.com/ggerganov/llama.cpp) bindings for fully
+  offline inference.
+
+```rust
+use qliber::{GenerationOptions, OllamaClient};
+
+fn main() -> anyhow::Result<()> {
+    let client = OllamaClient::new("http://localhost:11434", "phi3")?;
+    let mut options = GenerationOptions::default();
+    options.system_prompt = Some("You are a helpful quant assistant.".into());
+    options.max_tokens = Some(128);
+    let reply = client.generate_with_options("Summarize today's factor exposures.", &options)?;
+    println!("Ollama reply: {reply}");
+    Ok(())
+}
+```
+
+To enable direct GGUF execution, compile with `--features gguf` and provide a GGUF
+checkpoint path when constructing `GgufRunner`.
+
+## Build script
+
+The repository ships a helper script for reproducible release builds:
+
+```bash
+./scripts/build.sh             # Release build with default features
+./scripts/build.sh gguf        # Release build enabling the gguf feature
+```

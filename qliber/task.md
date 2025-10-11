@@ -38,3 +38,6 @@
 - [x] Port qlib.config initialization semantics into Rust (global config + init entrypoint)
 - [x] Register cache clearing hooks to honor clear_mem_cache parity
 - [x] Document the configuration API and add regression tests for initialization behavior
+- [x] Add Ollama HTTP client and GGUF inference support to mirror Python-side LLM helpers
+- [x] Provide a reproducible cargo build script for release builds
+- [x] Extend integration tests to cover the Ollama compatibility surface

@@ -7,6 +7,11 @@ authors = ["Qlib Rust Port Team"]
 license = "Apache-2.0"
 repository = "https://github.com/microsoft/qlib"
 
+[features]
+default = ["ollama"]
+ollama = []
+gguf = ["llama_cpp"]
+
 [dependencies]
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
@@ -17,9 +22,12 @@ serde_json = "1.0"
 thiserror = "1.0"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter", "time"] }
+reqwest = { version = "0.11", features = ["blocking", "json"], optional = false }
+llama_cpp = { version = "0.3.2", optional = true, default-features = false, features = ["compat"] }
 
 [dev-dependencies]
 approx = "0.5"
 tempfile = "3.10"
 assert_cmd = "2.0"
 predicates = "3.1"
+httpmock = "0.7"
