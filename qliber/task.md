@@ -41,3 +41,6 @@
 - [x] Add Ollama HTTP client and GGUF inference support to mirror Python-side LLM helpers
 - [x] Provide a reproducible cargo build script for release builds
 - [x] Extend integration tests to cover the Ollama compatibility surface
+- [x] Integrate a gradient boosting model into qliber's trainer API to cover LightGBM-style parity
+- [ ] Extend the trainer registry with pluggable adapters for external ML frameworks
+- [ ] Port model interpretation utilities (`qlib/model/interpret`) into qliber

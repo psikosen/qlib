@@ -20,10 +20,11 @@ Python implementation (`qlib/`) and the Rust port (`qliber/`).
 
 1. **Model zoo parity** – The Python stack includes a wide collection of machine
    learning models (e.g., gradient boosting, meta-learning ensembles, and risk
-   models) under `qlib/model`. The Rust crate currently exposes a baseline
-   `MeanModel` to prove out the training pipeline and lacks equivalents for the
-   richer algorithms, particularly the ensemble operators and meta-learning
-   helpers defined in `qlib/model/ens` and `qlib/model/meta`.
+   models) under `qlib/model`. `qliber` now ships both the baseline `MeanModel`
+   and an `XgBoostModel` backed by SmartCore's gradient boosting implementation,
+   covering the LightGBM-style workflows. Remaining work focuses on ensemble
+   operators and meta-learning helpers defined in `qlib/model/ens` and
+   `qlib/model/meta`.
 2. **Advanced interpretation utilities** – Python provides interpretation and
    explainability helpers (`qlib/model/interpret`) that are not yet mirrored in
    Rust.
@@ -37,9 +38,7 @@ Python implementation (`qlib/`) and the Rust port (`qliber/`).
 
 ## Next steps
 
-- Port a representative gradient boosting model (e.g., LightGBM) to Rust or
-  integrate via FFI.
 - Recreate the ensemble/grouping abstractions for production parity with
   `qlib.model.ens`.
 - Extend the trainer module with plugin support mirroring the Python
-  configuration surface.
+  configuration surface and integrate external ML backends.
