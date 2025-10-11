@@ -148,6 +148,33 @@ The `risk_analysis` and `indicator_analysis_with_method` helpers accept the same
 options as Qlib's Python API, making it straightforward to port workflows that rely on
 `mode="sum"/"product"` or indicator weighting strings without changing call sites.
 
+### Modeling
+
+`qliber::trainer` mirrors Qlib's model orchestration layer. Alongside the baseline
+`MeanModel`, the crate now provides an `XgBoostModel` built on SmartCore's gradient
+boosting implementation to cover the LightGBM-style scenarios documented in the Python
+stack. Both models expose the common `TrainableModel` trait so they can be dropped into
+existing trainer pipelines:
+
+```rust
+use polars::prelude::*;
+use qliber::{ExperimentManager, Trainer, XgBoostModel, XgBoostParameters};
+
+let features = DataFrame::new(vec![Series::new("feature", vec![1.0, 2.0, 3.0])])?;
+let labels = DataFrame::new(vec![Series::new("label", vec![3.0, 5.0, 7.0])])?;
+
+let manager = ExperimentManager::new();
+let recorder = manager.start("boosting-demo");
+let params = XgBoostParameters::default().with_n_estimators(50).with_max_depth(3);
+let mut model = XgBoostModel::new("label", vec!["feature".into()]).with_parameters(params);
+let mut trainer = Trainer::new(recorder, &mut model, "label", 1);
+trainer.train(&features, &labels)?;
+```
+
+`XgBoostParameters` re-exports SmartCore's builder so downstream applications can tune
+learning rate, tree depth, regularization, and sampling hyper-parameters without depending
+on SmartCore directly.
+
 ### Configuration
 
 `qliber::init` mirrors the behavior of `qlib.config` and `qlib.init` by providing global

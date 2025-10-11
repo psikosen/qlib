@@ -58,7 +58,10 @@ pub use remote::{MockTransport, RemoteDataClient, RemoteError, RemoteResult, Rem
 pub use rl::{
     Agent, CounterEnvironment, Environment, IncrementAgent, RlError, RlResult, RlTrainer,
 };
-pub use trainer::{MeanModel, TrainableModel, Trainer, TrainingError, TrainingResult};
+pub use trainer::{
+    MeanModel, TrainableModel, Trainer, TrainingError, TrainingResult, XgBoostModel,
+    XgBoostObjective, XgBoostParameters,
+};
 pub use workflow::{
     ExperimentManager, ExperimentRecord, Recorder, TaskManager, WorkflowError, WorkflowResult,
 };
