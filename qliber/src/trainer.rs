@@ -1,6 +1,11 @@
+use once_cell::sync::Lazy;
 use polars::prelude::*;
+use serde::Deserialize;
+use serde_json::Value;
 use smartcore::linalg::basic::matrix::DenseMatrix;
 use smartcore::xgboost::{XGRegressor, XGRegressorParameters};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 use crate::logging::log_event;
@@ -22,6 +27,243 @@ pub type TrainingResult<T> = Result<T, TrainingError>;
 pub trait TrainableModel {
     fn fit(&mut self, features: &DataFrame, labels: &DataFrame) -> TrainingResult<()>;
     fn predict(&self, features: &DataFrame) -> TrainingResult<DataFrame>;
+}
+
+#[derive(Debug, Clone)]
+pub struct TrainerRequest {
+    pub label_column: String,
+    pub feature_columns: Vec<String>,
+    pub parameters: Value,
+}
+
+impl TrainerRequest {
+    pub fn new(label_column: impl Into<String>, feature_columns: impl Into<Vec<String>>) -> Self {
+        Self {
+            label_column: label_column.into(),
+            feature_columns: feature_columns.into(),
+            parameters: Value::Null,
+        }
+    }
+
+    pub fn with_parameters(mut self, parameters: Value) -> Self {
+        self.parameters = parameters;
+        self
+    }
+
+    pub fn with_feature_columns(mut self, feature_columns: impl Into<Vec<String>>) -> Self {
+        self.feature_columns = feature_columns.into();
+        self
+    }
+
+    pub fn label_column(&self) -> &str {
+        &self.label_column
+    }
+
+    pub fn feature_columns(&self) -> &[String] {
+        &self.feature_columns
+    }
+
+    pub fn parameters(&self) -> &Value {
+        &self.parameters
+    }
+}
+
+pub trait TrainerAdapter: Send + Sync {
+    fn create(&self, request: &TrainerRequest) -> TrainingResult<Box<dyn TrainableModel>>;
+}
+
+#[derive(Default)]
+pub struct TrainerRegistry {
+    adapters: RwLock<HashMap<String, Arc<dyn TrainerAdapter>>>,
+}
+
+impl TrainerRegistry {
+    pub fn new() -> Self {
+        Self {
+            adapters: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub fn register_adapter(
+        &self,
+        name: impl Into<String>,
+        adapter: Arc<dyn TrainerAdapter>,
+    ) -> Option<Arc<dyn TrainerAdapter>> {
+        let name = name.into();
+        let mut guard = match self.adapters.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log_event(
+                    file!(),
+                    "TrainerRegistry",
+                    "register_adapter",
+                    "trainer.registry",
+                    line!(),
+                    &format!(
+                        "Recovering from poisoned registry write lock while registering '{name}'"
+                    ),
+                    Some("poison"),
+                    "post",
+                    "PUT",
+                );
+                poisoned.into_inner()
+            }
+        };
+
+        let previous = guard.insert(name.clone(), adapter);
+        log_event(
+            file!(),
+            "TrainerRegistry",
+            "register_adapter",
+            "trainer.registry",
+            line!(),
+            &format!("Registered adapter '{name}'"),
+            None,
+            "post",
+            "PUT",
+        );
+        previous
+    }
+
+    pub fn register_adapter_fn<F>(
+        &self,
+        name: impl Into<String>,
+        factory: F,
+    ) -> Option<Arc<dyn TrainerAdapter>>
+    where
+        F: Fn(&TrainerRequest) -> TrainingResult<Box<dyn TrainableModel>> + Send + Sync + 'static,
+    {
+        self.register_adapter(name, Arc::new(FunctionTrainerAdapter { factory }))
+    }
+
+    pub fn unregister_adapter(&self, name: &str) -> Option<Arc<dyn TrainerAdapter>> {
+        let mut guard = match self.adapters.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log_event(
+                    file!(),
+                    "TrainerRegistry",
+                    "unregister_adapter",
+                    "trainer.registry",
+                    line!(),
+                    &format!(
+                        "Recovering from poisoned registry write lock while unregistering '{name}'"
+                    ),
+                    Some("poison"),
+                    "post",
+                    "DELETE",
+                );
+                poisoned.into_inner()
+            }
+        };
+
+        let removed = guard.remove(name);
+        if removed.is_some() {
+            log_event(
+                file!(),
+                "TrainerRegistry",
+                "unregister_adapter",
+                "trainer.registry",
+                line!(),
+                &format!("Unregistered adapter '{name}'"),
+                None,
+                "post",
+                "DELETE",
+            );
+        }
+        removed
+    }
+
+    pub fn adapter(&self, name: &str) -> Option<Arc<dyn TrainerAdapter>> {
+        let guard = match self.adapters.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log_event(
+                    file!(),
+                    "TrainerRegistry",
+                    "adapter",
+                    "trainer.registry",
+                    line!(),
+                    &format!(
+                        "Recovering from poisoned registry read lock while resolving '{name}'"
+                    ),
+                    Some("poison"),
+                    "post",
+                    "GET",
+                );
+                poisoned.into_inner()
+            }
+        };
+        guard.get(name).cloned()
+    }
+
+    pub fn create(
+        &self,
+        name: &str,
+        request: &TrainerRequest,
+    ) -> TrainingResult<Box<dyn TrainableModel>> {
+        let adapter = self.adapter(name).ok_or_else(|| {
+            TrainingError::Model(format!("trainer adapter '{name}' is not registered"))
+        })?;
+
+        log_event(
+            file!(),
+            "TrainerRegistry",
+            "create",
+            "trainer.registry",
+            line!(),
+            &format!("Creating model via adapter '{name}'"),
+            None,
+            "pre",
+            "POST",
+        );
+        let model = adapter.create(request)?;
+        log_event(
+            file!(),
+            "TrainerRegistry",
+            "create",
+            "trainer.registry",
+            line!(),
+            &format!("Created model via adapter '{name}'"),
+            None,
+            "post",
+            "POST",
+        );
+        Ok(model)
+    }
+
+    pub fn with_builtin_adapters() -> Self {
+        let registry = Self::new();
+        registry.register_adapter_fn("mean", |request| {
+            if request.label_column().is_empty() {
+                return Err(TrainingError::Model(
+                    "mean model requires a label column name".into(),
+                ));
+            }
+            Ok(Box::new(MeanModel::new(request.label_column().to_string())) as _)
+        });
+        registry.register_adapter("xgboost", Arc::new(XgBoostAdapter));
+        registry
+    }
+}
+
+pub static GLOBAL_TRAINER_REGISTRY: Lazy<TrainerRegistry> =
+    Lazy::new(TrainerRegistry::with_builtin_adapters);
+
+struct FunctionTrainerAdapter<F>
+where
+    F: Fn(&TrainerRequest) -> TrainingResult<Box<dyn TrainableModel>> + Send + Sync + 'static,
+{
+    factory: F,
+}
+
+impl<F> TrainerAdapter for FunctionTrainerAdapter<F>
+where
+    F: Fn(&TrainerRequest) -> TrainingResult<Box<dyn TrainableModel>> + Send + Sync + 'static,
+{
+    fn create(&self, request: &TrainerRequest) -> TrainingResult<Box<dyn TrainableModel>> {
+        (self.factory)(request)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -64,6 +306,77 @@ impl TrainableModel for MeanModel {
         let rows = features.height();
         let predictions = Float64Chunked::full("prediction", self.mean, rows).into_series();
         Ok(DataFrame::new(vec![predictions])?)
+    }
+}
+
+#[derive(Default)]
+struct XgBoostAdapter;
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+struct XgBoostAdapterConfig {
+    n_estimators: Option<usize>,
+    learning_rate: Option<f64>,
+    max_depth: Option<u16>,
+    min_child_weight: Option<usize>,
+    lambda: Option<f64>,
+    gamma: Option<f64>,
+    subsample: Option<f64>,
+    seed: Option<u64>,
+}
+
+impl TrainerAdapter for XgBoostAdapter {
+    fn create(&self, request: &TrainerRequest) -> TrainingResult<Box<dyn TrainableModel>> {
+        if request.label_column().is_empty() {
+            return Err(TrainingError::Model(
+                "xgboost adapter requires a label column".into(),
+            ));
+        }
+        if request.feature_columns().is_empty() {
+            return Err(TrainingError::Model(
+                "xgboost adapter requires at least one feature column".into(),
+            ));
+        }
+
+        let mut model = XgBoostModel::new(
+            request.label_column().to_string(),
+            request.feature_columns().to_vec(),
+        );
+
+        if !request.parameters().is_null() {
+            let overrides: XgBoostAdapterConfig =
+                serde_json::from_value(request.parameters().clone()).map_err(|err| {
+                    TrainingError::Model(format!("invalid xgboost parameters: {err}"))
+                })?;
+            let mut params = model.parameters.clone();
+            if let Some(value) = overrides.n_estimators {
+                params = params.with_n_estimators(value);
+            }
+            if let Some(value) = overrides.learning_rate {
+                params = params.with_learning_rate(value);
+            }
+            if let Some(value) = overrides.max_depth {
+                params = params.with_max_depth(value);
+            }
+            if let Some(value) = overrides.min_child_weight {
+                params = params.with_min_child_weight(value);
+            }
+            if let Some(value) = overrides.lambda {
+                params = params.with_lambda(value);
+            }
+            if let Some(value) = overrides.gamma {
+                params = params.with_gamma(value);
+            }
+            if let Some(value) = overrides.subsample {
+                params = params.with_subsample(value);
+            }
+            if let Some(value) = overrides.seed {
+                params = params.with_seed(value);
+            }
+            model.set_parameters(params);
+        }
+
+        Ok(Box::new(model))
     }
 }
 
@@ -245,7 +558,7 @@ impl<'a> Trainer<'a> {
     }
 }
 
-fn mean_squared_error(
+pub(crate) fn mean_squared_error(
     labels: &DataFrame,
     predictions: &DataFrame,
     label_column: &str,

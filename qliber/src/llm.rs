@@ -285,8 +285,10 @@ mod tests {
     #[test]
     fn rejects_non_object_options() {
         let client = OllamaClient::new("http://localhost:11434", "qwen").unwrap();
-        let mut options = GenerationOptions::default();
-        options.options = Some(Value::from("temperature"));
+        let options = GenerationOptions {
+            options: Some(Value::from("temperature")),
+            ..Default::default()
+        };
         let err = client.generate_with_options("hi", &options).unwrap_err();
         assert!(matches!(err, LlmError::InvalidOptions));
     }

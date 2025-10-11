@@ -13,6 +13,9 @@ Python implementation (`qlib/`) and the Rust port (`qliber/`).
 - **Portfolio analytics and evaluation metrics**: cumulative returns, drawdown,
   indicator statistics, and Sharpe/alpha utilities are available in both code
   bases.
+- **Trainer registry & interpretation**: the Rust trainer mirrors Python's
+  adapter registry with pluggable backends and now includes permutation-based
+  feature interpretation utilities for model explainability.
 - **CLI tooling**: the `qrun` binary provides end-to-end orchestration similar to
   the Python CLI entrypoints.
 
@@ -25,20 +28,11 @@ Python implementation (`qlib/`) and the Rust port (`qliber/`).
    covering the LightGBM-style workflows. Remaining work focuses on ensemble
    operators and meta-learning helpers defined in `qlib/model/ens` and
    `qlib/model/meta`.
-2. **Advanced interpretation utilities** – Python provides interpretation and
-   explainability helpers (`qlib/model/interpret`) that are not yet mirrored in
-   Rust.
-3. **Risk model generation** – The risk modeling utilities (`qlib/model/riskmodel`)
+2. **Risk model generation** – The risk modeling utilities (`qlib/model/riskmodel`)
    for factor covariance estimation remain Python-only. Rust side exposes the
    downstream analytics but not the model fitting workflow.
-4. **Extensible trainer registry** – Python's trainer module integrates with
-   third-party frameworks (LightGBM, PyTorch). Rust currently implements the
-   trainer orchestration but only ships an in-memory baseline and lacks bindings
-   to external ML libraries.
 
 ## Next steps
 
 - Recreate the ensemble/grouping abstractions for production parity with
   `qlib.model.ens`.
-- Extend the trainer module with plugin support mirroring the Python
-  configuration surface and integrate external ML backends.
