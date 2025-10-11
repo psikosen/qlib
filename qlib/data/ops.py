@@ -8,26 +8,96 @@ from __future__ import print_function
 import numpy as np
 import pandas as pd
 
-from typing import Union, List, Type
+from typing import Callable, Tuple, Union, List, Type
 from scipy.stats import percentileofscore
 from .base import Expression, ExpressionOps, Feature, PFeature
 from ..log import get_module_logger
 from ..utils import get_callable_kwargs
 
+
+def _linear_regression_statistics(window_values: np.ndarray) -> Tuple[float, float, float]:
+    """Compute slope, residual, and r-square for the provided window.
+
+    The helper emulates the Cython implementation by ignoring NaN values and
+    assigning sequential indices to the valid observations within the window.
+    """
+
+    mask = ~np.isnan(window_values)
+    valid = window_values[mask]
+    if valid.size == 0:
+        return np.nan, np.nan, np.nan
+
+    x = np.arange(1, valid.size + 1, dtype=float)
+    y = valid.astype(float)
+    x_mean = x.mean()
+    y_mean = y.mean()
+
+    x_dev = x - x_mean
+    y_dev = y - y_mean
+    cov = float(np.dot(x_dev, y_dev))
+    var_x = float(np.dot(x_dev, x_dev))
+    var_y = float(np.dot(y_dev, y_dev))
+
+    slope = cov / var_x if var_x > 0 else np.nan
+    intercept = y_mean - slope * x_mean if np.isfinite(slope) else np.nan
+    if var_x > 0 and var_y > 0:
+        r_square = (cov * cov) / (var_x * var_y)
+    else:
+        r_square = np.nan
+
+    if mask[-1] and np.isfinite(slope) and np.isfinite(intercept):
+        last_position = int(mask.cumsum()[-1])
+        residual = window_values[-1] - (slope * last_position + intercept)
+    else:
+        residual = np.nan
+
+    return slope, residual, r_square
+
+
+def _python_rolling_template(
+    values: np.ndarray, window: int, extractor: Callable[[float, float, float], float]
+) -> np.ndarray:
+    if window <= 0:
+        raise ValueError("window must be a positive integer")
+
+    array = np.asarray(values, dtype=float)
+    result = np.full(array.shape, np.nan, dtype=float)
+
+    for idx in range(array.shape[0]):
+        start = max(0, idx - window + 1)
+        window_values = array[start : idx + 1]
+        slope, residual, r_square = _linear_regression_statistics(window_values)
+        result[idx] = extractor(slope, residual, r_square)
+
+    return result
+
+
 try:
     from ._libs.rolling import rolling_slope, rolling_rsquare, rolling_resi
     from ._libs.expanding import expanding_slope, expanding_rsquare, expanding_resi
-except ImportError:
+except (ImportError, ValueError):
     print(
         "#### Do not import qlib package in the repository directory in case of importing qlib from . without compiling #####"
     )
-    raise
-except ValueError:
-    print("!!!!!!!! A error occurs when importing operators implemented based on Cython.!!!!!!!!")
-    print("!!!!!!!! They will be disabled. Please Upgrade your numpy to enable them     !!!!!!!!")
-    # We catch this error because some platform can't upgrade there package (e.g. Kaggle)
-    # https://www.kaggle.com/general/293387
-    # https://www.kaggle.com/product-feedback/98562
+    print("!!!!!!!! Fallback to Python implementations for rolling operators.!!!!!!!!")
+
+    def rolling_slope(a: np.ndarray, window: int) -> np.ndarray:
+        return _python_rolling_template(a, window, lambda slope, _resi, _r2: slope)
+
+    def rolling_rsquare(a: np.ndarray, window: int) -> np.ndarray:
+        return _python_rolling_template(a, window, lambda _slope, _resi, r2: r2)
+
+    def rolling_resi(a: np.ndarray, window: int) -> np.ndarray:
+        return _python_rolling_template(a, window, lambda _slope, resi, _r2: resi)
+
+    def expanding_slope(a: np.ndarray) -> np.ndarray:
+        return _python_rolling_template(a, a.shape[0], lambda slope, _resi, _r2: slope)
+
+    def expanding_rsquare(a: np.ndarray) -> np.ndarray:
+        return _python_rolling_template(a, a.shape[0], lambda _slope, _resi, r2: r2)
+
+    def expanding_resi(a: np.ndarray) -> np.ndarray:
+        return _python_rolling_template(a, a.shape[0], lambda _slope, resi, _r2: resi)
 
 
 np.seterr(invalid="ignore")
