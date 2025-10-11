@@ -10,17 +10,45 @@ import pickle
 import random
 import requests
 import functools
+import inspect
+from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Tuple, List
+from typing import Iterable, Tuple, List, Any
 
 import numpy as np
 import pandas as pd
 from loguru import logger
-from yahooquery import Ticker
 from tqdm import tqdm
 from functools import partial
 from concurrent.futures import ProcessPoolExecutor
 from bs4 import BeautifulSoup
+
+try:
+    from yahooquery import Ticker
+except ModuleNotFoundError:  # pragma: no cover - fallback depends on environment
+    Ticker = None  # type: ignore[assignment]
+
+
+def _ensure_yahooquery() -> Any:
+    if Ticker is None:  # pragma: no cover - executed only when dependency missing
+        msg = "yahooquery is required for downloading US/IN/BR calendars. Install it with 'pip install yahooquery'"
+        frame = inspect.currentframe()
+        record = {
+            "filename": __file__,
+            "timestamp": datetime.utcnow().isoformat(),
+            "classname": "DependencyGuard",
+            "function": "_ensure_yahooquery",
+            "system_section": "dependency_check",
+            "line_num": frame.f_lineno if frame else -1,
+            "error": msg,
+            "db_phase": "none",
+            "method": "NONE",
+            "message": msg,
+        }
+        logger.error(record)
+        logger.error("[Continuous skepticism (Sherlock Protocol)] %s", msg)
+        raise ModuleNotFoundError(msg)
+    return Ticker
 
 HS_SYMBOLS_URL = "http://app.finance.ifeng.com/hq/list.php?type=stock_a&class={s_type}"
 
@@ -74,9 +102,10 @@ def get_calendar_list(bench_code="CSI300") -> List[pd.Timestamp]:
     calendar = _CALENDAR_MAP.get(bench_code, None)
     if calendar is None:
         if bench_code.startswith("US_") or bench_code.startswith("IN_") or bench_code.startswith("BR_"):
-            print(Ticker(CALENDAR_BENCH_URL_MAP[bench_code]))
-            print(Ticker(CALENDAR_BENCH_URL_MAP[bench_code]).history(interval="1d", period="max"))
-            df = Ticker(CALENDAR_BENCH_URL_MAP[bench_code]).history(interval="1d", period="max")
+            ticker_cls = _ensure_yahooquery()
+            print(ticker_cls(CALENDAR_BENCH_URL_MAP[bench_code]))
+            print(ticker_cls(CALENDAR_BENCH_URL_MAP[bench_code]).history(interval="1d", period="max"))
+            df = ticker_cls(CALENDAR_BENCH_URL_MAP[bench_code]).history(interval="1d", period="max")
             calendar = df.index.get_level_values(level="date").map(pd.Timestamp).unique().tolist()
         else:
             if bench_code.upper() == "ALL":

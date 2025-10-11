@@ -3,14 +3,44 @@
 
 import re
 import sys
+import inspect
 from datetime import datetime
 from pathlib import Path
 from typing import List, Iterable, Optional, Union
+from types import ModuleType
 
 import fire
 import pandas as pd
-import baostock as bs
 from loguru import logger
+
+try:
+    import baostock as bs
+except ModuleNotFoundError:  # pragma: no cover - fallback is environment dependent
+    bs = None  # type: ignore[assignment]
+
+
+def _ensure_baostock() -> ModuleType:
+    """Return the imported :mod:`baostock` module or raise a helpful error."""
+
+    if bs is None:  # pragma: no cover - executed only when dependency is missing
+        msg = "baostock is required for downloading PIT data. Install it with 'pip install baostock'"
+        frame = inspect.currentframe()
+        record = {
+            "filename": __file__,
+            "timestamp": datetime.utcnow().isoformat(),
+            "classname": "DependencyGuard",
+            "function": "_ensure_baostock",
+            "system_section": "dependency_check",
+            "line_num": frame.f_lineno if frame else -1,
+            "error": msg,
+            "db_phase": "none",
+            "method": "NONE",
+            "message": msg,
+        }
+        logger.error(record)
+        logger.error("[Continuous skepticism (Sherlock Protocol)] %s", msg)
+        raise ModuleNotFoundError(msg)
+    return bs
 
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.append(str(BASE_DIR.parent.parent))
@@ -94,13 +124,14 @@ class PitCollector(BaseCollector):
 
     @staticmethod
     def get_performance_express_report_df(code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        bs_local = _ensure_baostock()
         column_mapping = {
             "performanceExpPubDate": "date",
             "performanceExpStatDate": "period",
             "performanceExpressROEWa": "value",
         }
 
-        resp = bs.query_performance_express_report(code=code, start_date=start_date, end_date=end_date)
+        resp = bs_local.query_performance_express_report(code=code, start_date=start_date, end_date=end_date)
         report_list = []
         while (resp.error_code == "0") and resp.next():
             report_list.append(resp.get_row_data())
@@ -117,14 +148,15 @@ class PitCollector(BaseCollector):
 
     @staticmethod
     def get_profit_df(code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        bs_local = _ensure_baostock()
         column_mapping = {"pubDate": "date", "statDate": "period", "roeAvg": "value"}
-        fields = bs.query_profit_data(code="sh.600519", year=2020, quarter=1).fields
+        fields = bs_local.query_profit_data(code="sh.600519", year=2020, quarter=1).fields
         start_date = datetime.strptime(start_date, "%Y-%m-%d")
         end_date = datetime.strptime(end_date, "%Y-%m-%d")
         args = [(year, quarter) for quarter in range(1, 5) for year in range(start_date.year - 1, end_date.year + 1)]
         profit_list = []
         for year, quarter in args:
-            resp = bs.query_profit_data(code=code, year=year, quarter=quarter)
+            resp = bs_local.query_profit_data(code=code, year=year, quarter=quarter)
             while (resp.error_code == "0") and resp.next():
                 if "pubDate" not in resp.fields:
                     continue
@@ -144,12 +176,13 @@ class PitCollector(BaseCollector):
 
     @staticmethod
     def get_forecast_report_df(code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        bs_local = _ensure_baostock()
         column_mapping = {
             "profitForcastExpPubDate": "date",
             "profitForcastExpStatDate": "period",
             "value": "value",
         }
-        resp = bs.query_forecast_report(code=code, start_date=start_date, end_date=end_date)
+        resp = bs_local.query_forecast_report(code=code, start_date=start_date, end_date=end_date)
         forecast_list = []
         while (resp.error_code == "0") and resp.next():
             forecast_list.append(resp.get_row_data())
@@ -167,14 +200,15 @@ class PitCollector(BaseCollector):
 
     @staticmethod
     def get_growth_df(code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        bs_local = _ensure_baostock()
         column_mapping = {"pubDate": "date", "statDate": "period", "YOYNI": "value"}
-        fields = bs.query_growth_data(code="sh.600519", year=2020, quarter=1).fields
+        fields = bs_local.query_growth_data(code="sh.600519", year=2020, quarter=1).fields
         start_date = datetime.strptime(start_date, "%Y-%m-%d")
         end_date = datetime.strptime(end_date, "%Y-%m-%d")
         args = [(year, quarter) for quarter in range(1, 5) for year in range(start_date.year - 1, end_date.year + 1)]
         growth_list = []
         for year, quarter in args:
-            resp = bs.query_growth_data(code=code, year=year, quarter=quarter)
+            resp = bs_local.query_growth_data(code=code, year=year, quarter=quarter)
             while (resp.error_code == "0") and resp.next():
                 if "pubDate" not in resp.fields:
                     continue
@@ -199,6 +233,7 @@ class PitCollector(BaseCollector):
         start_datetime: pd.Timestamp,
         end_datetime: pd.Timestamp,
     ) -> pd.DataFrame:
+        _ensure_baostock()
         if interval != self.INTERVAL_QUARTERLY:
             raise ValueError(f"cannot support {interval}")
         symbol, exchange = symbol.split(".")
@@ -257,6 +292,9 @@ class Run(BaseRun):
 
 
 if __name__ == "__main__":
-    bs.login()
-    fire.Fire(Run)
-    bs.logout()
+    _bs = _ensure_baostock()
+    _bs.login()
+    try:
+        fire.Fire(Run)
+    finally:
+        _bs.logout()
