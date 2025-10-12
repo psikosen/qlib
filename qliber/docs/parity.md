@@ -28,8 +28,10 @@ parity checklist. Core areas now aligned include:
   the built-in trainer adapter mirror `qlib.model.ens` and `qlib.model.meta`
   behaviors, including learned weight blending and meta-label generation.
 - **Risk models** – `FactorRiskModel` provides shrinkage-aware covariance
-  estimation and asset-level risk projection equivalent to
-  `qlib.model.riskmodel`'s shrinkage estimators.
+  estimation, `PoetRiskModel` mirrors the Principal Orthogonal Complement
+  Thresholding estimator, and `StructuredRiskModel` reconstructs
+  PCA/factor-analysis driven covariance surfaces equivalent to the Python
+  `qlib.model.riskmodel` implementations.
 
 ## Next steps
 

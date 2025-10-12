@@ -15,3 +15,9 @@
 - [x] Implement factor risk model generation with shrinkage parity to `qlib.model.riskmodel`.
 - [x] Rerun targeted ensemble and risk model integration tests after adjustments.
 - [x] Execute full `cargo test` to validate the expanded module surface.
+- [x] Add POET covariance estimator parity to qliber risk modeling.
+- [x] Port structured covariance estimator (PCA & factor analysis) into qliber.
+- [x] Expand documentation and re-exports for the new risk model APIs.
+- [x] Extend Rust risk model tests to cover POET and structured estimators.
+- [x] Align structured PCA outputs with the Python reference implementation.
+- [x] Align structured factor analysis covariance with the Python reference implementation.
