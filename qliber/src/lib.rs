@@ -62,7 +62,10 @@ pub use provider::{
     TradingCalendar,
 };
 pub use remote::{MockTransport, RemoteDataClient, RemoteError, RemoteResult, RemoteTransport};
-pub use riskmodel::{FactorRiskModel, RiskModelError, RiskModelResult, ShrinkageMethod};
+pub use riskmodel::{
+    FactorRiskModel, PoetRiskModel, PoetThresholdMethod, RiskModelError, RiskModelResult,
+    ShrinkageMethod, StructuredFactorModel, StructuredRiskModel,
+};
 pub use rl::{
     Agent, CounterEnvironment, Environment, IncrementAgent, RlError, RlResult, RlTrainer,
 };

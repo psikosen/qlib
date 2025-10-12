@@ -273,11 +273,18 @@ learning hints.
 ### Risk modeling
 
 `FactorRiskModel` implements Ledoit-Wolf and fixed-coefficient shrinkage to
-generate stable factor covariance matrices and project them into asset space:
+generate stable factor covariance matrices and project them into asset space.
+When you need robust estimators for sparse factor structures, `PoetRiskModel`
+adds Principal Orthogonal Complement Thresholding with configurable shrinkage
+heuristics, and `StructuredRiskModel` reconstructs covariance surfaces via PCA
+or iterative factor analysis to mirror Qlib's structured estimators:
 
 ```rust
 use polars::{df, prelude::*};
-use qliber::{FactorRiskModel, ShrinkageMethod};
+use qliber::{
+    FactorRiskModel, PoetRiskModel, PoetThresholdMethod, ShrinkageMethod,
+    StructuredFactorModel, StructuredRiskModel,
+};
 
 let factors = df! {
     "f1" => &[0.01, 0.02, 0.015, 0.005],
@@ -305,6 +312,25 @@ println!(
     risk_model.shrinkage(),
     asset_cov,
     portfolio_var
+);
+
+let poet = PoetRiskModel::from_factor_returns(
+    &factors,
+    vec!["f1".into(), "f2".into()],
+    1,
+    1.0,
+    PoetThresholdMethod::Soft,
+)?;
+let structured = StructuredRiskModel::from_observations(
+    &factors,
+    vec!["f1".into(), "f2".into()],
+    StructuredFactorModel::Pca,
+    2,
+)?;
+println!("POET covariance:\n{}", poet.factor_covariance()?);
+println!(
+    "Structured covariance (PCA):\n{}",
+    structured.factor_covariance()?
 );
 ```
 
