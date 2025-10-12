@@ -48,3 +48,6 @@
 - [x] Implement factor risk model generation with shrinkage parity to `qlib.model.riskmodel`
 - [x] Rerun ensemble and risk model tests after port completion
 - [x] Run full `cargo test` to confirm overall stability post-port
+- [x] Expand workflow task management with queued status tracking and retries
+- [x] Add workflow tests covering task failure recovery and metadata retention
+- [x] Document the workflow task queue usage in the README
