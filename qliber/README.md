@@ -36,11 +36,14 @@ qliber/
 ├── README.md
 ├── src
 │   ├── dataset.rs      # Lazy CSV ingestion and column selection utilities
+│   ├── ensemble.rs     # Trainer-facing ensemble models and adapters
 │   ├── features.rs     # Feature engineering helpers (returns, moving averages, z-scores)
 │   ├── logging.rs      # Structured logging initialization and helpers
 │   ├── metrics.rs      # Performance metric calculations (cumulative, annualized, ratios, drawdowns)
+│   ├── meta.rs         # Meta-learning utilities (meta labels, weight learning)
 │   ├── portfolio.rs    # Portfolio analytics matching qlib.contrib.evaluate_portfolio
 │   ├── provider.rs     # Trading calendars, instrument registry, feature caching, and PIT storage
+│   ├── riskmodel.rs    # Shrinkage-aware factor risk modeling utilities
 │   └── lib.rs          # Public crate exports
 └── tests
     ├── pipeline.rs     # End-to-end regression test covering the primary flow
@@ -216,6 +219,93 @@ let mut interpreter = PermutationFeatureInterpreter::new(&model, "label")
     .with_repeats(8);
 let importances = interpreter.feature_importance(&features, &labels)?;
 println!("Top feature: {} -> {:.4}", importances[0].feature, importances[0].importance);
+```
+
+### Ensembles and meta-learning
+
+The ensemble stack mirrors `qlib.model.ens` with support for learned blending
+weights and meta-label generation:
+
+```rust
+use polars::{df, prelude::*};
+use qliber::{
+    MeanModel, MetaLabelGenerator, TrainableModel, WeightedEnsemble, WeightLearner,
+    XgBoostModel,
+};
+
+let features = df! { "feature" => &[1.0, 2.0, 3.0] }?;
+let labels = df! { "label" => &[3.0, 5.0, 7.0] }?;
+
+let models = vec![
+    (
+        "mean".to_string(),
+        vec!["feature".to_string()],
+        Box::new(MeanModel::new("label".to_string())) as Box<dyn TrainableModel>,
+    ),
+    (
+        "boost".to_string(),
+        vec!["feature".to_string()],
+        Box::new(XgBoostModel::new("label", vec!["feature".to_string()])),
+    ),
+];
+
+let mut ensemble = WeightedEnsemble::from_models(models, vec![0.4, 0.6], "label", true)?
+    .with_weight_learning(true, 1e-6);
+ensemble.fit(&features, &labels)?;
+let blended = ensemble.predict(&features)?;
+
+let predictions = df! {
+    "label" => &[1.0, -1.0],
+    "model_a" => &[0.8, -0.9],
+    "model_b" => &[1.1, -1.3],
+}?;
+let generator = MetaLabelGenerator::new("label", vec!["model_a".into(), "model_b".into()]);
+let meta_frame = generator.generate(&predictions)?;
+let weights = WeightLearner::new()
+    .learn_weights(&predictions, &vec!["model_a".into(), "model_b".into()], "label")?;
+println!("Blended predictions: {blended}\nMeta labels: {meta_frame}\nLearned weights: {weights:?}");
+```
+
+You can also register ensembles through `GLOBAL_TRAINER_REGISTRY` by passing a
+JSON configuration that lists each adapter, its parameters, and optional weight
+learning hints.
+
+### Risk modeling
+
+`FactorRiskModel` implements Ledoit-Wolf and fixed-coefficient shrinkage to
+generate stable factor covariance matrices and project them into asset space:
+
+```rust
+use polars::{df, prelude::*};
+use qliber::{FactorRiskModel, ShrinkageMethod};
+
+let factors = df! {
+    "f1" => &[0.01, 0.02, 0.015, 0.005],
+    "f2" => &[0.03, 0.025, 0.02, 0.01],
+}?;
+let exposures = df! {
+    "asset" => &["A", "B"],
+    "f1" => &[0.5, 1.0],
+    "f2" => &[1.0, 0.0],
+}?;
+
+let risk_model = FactorRiskModel::from_factor_returns(
+    &factors,
+    vec!["f1".into(), "f2".into()],
+    ShrinkageMethod::LedoitWolf,
+)?;
+let asset_cov = risk_model.asset_covariance(&exposures, "asset")?;
+let portfolio_var = risk_model.portfolio_variance(
+    &exposures,
+    "asset",
+    &[("A".to_string(), 0.6), ("B".to_string(), 0.4)],
+)?;
+println!(
+    "Shrinkage: {:.4}\nAsset covariance:\n{}\nPortfolio variance: {:.6e}",
+    risk_model.shrinkage(),
+    asset_cov,
+    portfolio_var
+);
 ```
 
 ### Configuration

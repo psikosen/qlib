@@ -44,3 +44,7 @@
 - [x] Integrate a gradient boosting model into qliber's trainer API to cover LightGBM-style parity
 - [x] Extend the trainer registry with pluggable adapters for external ML frameworks
 - [x] Port model interpretation utilities (`qlib/model/interpret`) into qliber
+- [x] Port ensemble/meta-learning helpers (`qlib/model/ens`, `qlib/model/meta`) into qliber
+- [x] Implement factor risk model generation with shrinkage parity to `qlib.model.riskmodel`
+- [x] Rerun ensemble and risk model tests after port completion
+- [x] Run full `cargo test` to confirm overall stability post-port

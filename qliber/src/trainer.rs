@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
+use crate::ensemble::EnsembleTrainerAdapter;
 use crate::logging::log_event;
 use crate::workflow::Recorder;
 
@@ -243,6 +244,7 @@ impl TrainerRegistry {
             Ok(Box::new(MeanModel::new(request.label_column().to_string())) as _)
         });
         registry.register_adapter("xgboost", Arc::new(XgBoostAdapter));
+        registry.register_adapter("ensemble", Arc::new(EnsembleTrainerAdapter));
         registry
     }
 }
