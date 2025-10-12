@@ -75,7 +75,8 @@ pub use trainer::{
     XgBoostParameters,
 };
 pub use workflow::{
-    ExperimentManager, ExperimentRecord, Recorder, TaskManager, WorkflowError, WorkflowResult,
+    ExperimentManager, ExperimentRecord, Recorder, TaskManager, TaskStatus, TaskSummary,
+    WorkflowError, WorkflowResult,
 };
 
 pub type Result<T> = anyhow::Result<T>;

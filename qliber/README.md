@@ -221,6 +221,53 @@ let importances = interpreter.feature_importance(&features, &labels)?;
 println!("Top feature: {} -> {:.4}", importances[0].feature, importances[0].importance);
 ```
 
+### Workflow task management
+
+The workflow module now mirrors Qlib's rolling task orchestration with a stateful
+`TaskManager`. Each queued task tracks its status, attempt count, and the last
+observed error, and failed tasks can be re-queued once the underlying issue is
+resolved:
+
+```rust
+use std::sync::{Arc, Mutex};
+
+use qliber::{
+    ExperimentManager, TaskManager, TaskStatus, WorkflowError,
+};
+
+let manager = ExperimentManager::new();
+let recorder = manager.start("workflow-demo");
+let tasks = TaskManager::new();
+
+let _ = tasks.enqueue("persist-metric", |recorder| {
+    recorder.log_metric("alpha", 0.1);
+    Ok(())
+});
+
+let toggle = Arc::new(Mutex::new(true));
+let flaky_gate = Arc::clone(&toggle);
+let flaky_id = tasks.enqueue("flaky", move |_recorder| {
+    let mut guard = flaky_gate.lock().expect("toggle");
+    if *guard {
+        *guard = false;
+        Err(WorkflowError::Io("transient network".into()))
+    } else {
+        Ok(())
+    }
+});
+
+tasks.run(&recorder);
+assert_eq!(tasks.by_status(TaskStatus::Failed).len(), 1);
+
+tasks.retry_failed();
+tasks.run(&recorder);
+
+let summary = tasks.get(flaky_id).expect("flaky task tracked");
+assert_eq!(summary.status, TaskStatus::Completed);
+assert_eq!(summary.attempts, 2);
+assert!(summary.last_error.is_some());
+```
+
 ### Ensembles and meta-learning
 
 The ensemble stack mirrors `qlib.model.ens` with support for learned blending

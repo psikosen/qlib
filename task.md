@@ -21,3 +21,6 @@
 - [x] Extend Rust risk model tests to cover POET and structured estimators.
 - [x] Align structured PCA outputs with the Python reference implementation.
 - [x] Align structured factor analysis covariance with the Python reference implementation.
+- [x] Expand qliber workflow task management with queued status tracking and retries.
+- [x] Add regression tests covering TaskManager status transitions and retries.
+- [x] Document the enhanced TaskManager queue semantics in qliber's README.
