@@ -21,18 +21,18 @@ Python implementation (`qlib/`) and the Rust port (`qliber/`).
 
 ## Outstanding functionality
 
-1. **Model zoo parity** – The Python stack includes a wide collection of machine
-   learning models (e.g., gradient boosting, meta-learning ensembles, and risk
-   models) under `qlib/model`. `qliber` now ships both the baseline `MeanModel`
-   and an `XgBoostModel` backed by SmartCore's gradient boosting implementation,
-   covering the LightGBM-style workflows. Remaining work focuses on ensemble
-   operators and meta-learning helpers defined in `qlib/model/ens` and
-   `qlib/model/meta`.
-2. **Risk model generation** – The risk modeling utilities (`qlib/model/riskmodel`)
-   for factor covariance estimation remain Python-only. Rust side exposes the
-   downstream analytics but not the model fitting workflow.
+The current Rust surface matches the Python implementation across the original
+parity checklist. Core areas now aligned include:
+
+- **Ensemble & meta-learning** – `WeightedEnsemble`, `MetaLabelGenerator`, and
+  the built-in trainer adapter mirror `qlib.model.ens` and `qlib.model.meta`
+  behaviors, including learned weight blending and meta-label generation.
+- **Risk models** – `FactorRiskModel` provides shrinkage-aware covariance
+  estimation and asset-level risk projection equivalent to
+  `qlib.model.riskmodel`'s shrinkage estimators.
 
 ## Next steps
 
-- Recreate the ensemble/grouping abstractions for production parity with
-  `qlib.model.ens`.
+- Continue expanding the model zoo with additional learners from
+  `qlib.model` (e.g., ensemble stacking variants, riskmodel utilities beyond
+  shrinkage estimators) as new research needs emerge.

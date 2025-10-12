@@ -11,3 +11,7 @@
 - [x] Add Rust-side build orchestration script for reproducible releases.
 - [x] Extend the trainer registry with pluggable adapters for external ML frameworks.
 - [x] Port model interpretation utilities (`qlib/model/interpret`) into qliber.
+- [x] Port ensemble/meta-learning helpers (`qlib/model/ens` & `qlib/model/meta`) into qliber.
+- [x] Implement factor risk model generation with shrinkage parity to `qlib.model.riskmodel`.
+- [x] Rerun targeted ensemble and risk model integration tests after adjustments.
+- [x] Execute full `cargo test` to validate the expanded module surface.

@@ -6,15 +6,18 @@ pub mod backtest;
 pub mod config;
 pub mod contrib;
 pub mod dataset;
+pub mod ensemble;
 pub mod features;
 pub mod interpret;
 pub mod llm;
 pub mod logging;
+pub mod meta;
 pub mod metrics;
 pub mod ops;
 pub mod portfolio;
 pub mod provider;
 pub mod remote;
+pub mod riskmodel;
 pub mod rl;
 pub mod trainer;
 pub mod workflow;
@@ -34,11 +37,13 @@ pub use dataset::{
     ExpressionProcessor, FillForwardProcessor, LoaderOptions, MarketData, Processor,
     ProcessorChain, ProcessorRef, RenameProcessor, SelectColumnsProcessor,
 };
+pub use ensemble::WeightedEnsemble;
 pub use features::{with_daily_returns, with_moving_average, with_z_score};
 pub use interpret::{FeatureImportance, FeatureInterpreter, PermutationFeatureInterpreter};
 #[cfg(feature = "gguf")]
 pub use llm::GgufRunner;
 pub use llm::{GenerationOptions, LlmError, OllamaClient};
+pub use meta::{MetaError, MetaLabelGenerator, WeightLearner};
 pub use metrics::{
     AccumulationMode, AnalysisFrequency, FrequencyUnit, IndicatorMethod, MetricsError,
     MetricsResult, PerformanceMetrics, indicator_analysis, indicator_analysis_with_method,
@@ -57,6 +62,7 @@ pub use provider::{
     TradingCalendar,
 };
 pub use remote::{MockTransport, RemoteDataClient, RemoteError, RemoteResult, RemoteTransport};
+pub use riskmodel::{FactorRiskModel, RiskModelError, RiskModelResult, ShrinkageMethod};
 pub use rl::{
     Agent, CounterEnvironment, Environment, IncrementAgent, RlError, RlResult, RlTrainer,
 };
