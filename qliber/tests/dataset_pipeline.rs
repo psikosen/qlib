@@ -24,21 +24,27 @@ fn data_handler_applies_processors() -> anyhow::Result<()> {
     let mut file = NamedTempFile::new()?;
     writeln!(
         file,
-        "timestamp,price\n2024-01-01T00:00:00Z,100\n2024-01-02T00:00:00Z,101\n2024-01-03T00:00:00Z,105\n2024-01-04T00:00:00Z,104"
+        "timestamp,open,close,high,low,volume\n\
+        2024-01-01T00:00:00Z,100.0,102.0,103.0,99.0,1000.0\n\
+        2024-01-02T00:00:00Z,101.0,103.0,104.0,100.0,1100.0\n\
+        2024-01-03T00:00:00Z,105.0,107.0,108.0,104.0,1200.0\n\
+        2024-01-04T00:00:00Z,104.0,106.0,107.0,103.0,1150.0\n\
+        2024-01-05T00:00:00Z,106.0,108.0,109.0,105.0,1200.0\n\
+        2024-01-06T00:00:00Z,107.0,109.0,110.0,106.0,1250.0\n\
+        2024-01-07T00:00:00Z,108.0,110.0,111.0,107.0,1300.0"
     )?;
 
     let market = MarketData::from_csv(file.path())?;
     let config = DataHandlerConfig {
         feature_processors: vec![
             std::sync::Arc::new(FillForwardProcessor::new(None)),
-            processor("price", "base"),
-            std::sync::Arc::new(Alpha158Processor::new("price")),
+            processor("close", "base"),
         ],
-        label_processors: vec![processor("price", "label_price")],
+        label_processors: vec![processor("close", "label_price")],
         feature_columns: vec![
             "timestamp".to_string(),
-            "price".to_string(),
-            "ma_5".to_string(),
+            "close".to_string(),
+            "base".to_string(),
         ],
         label_columns: vec!["label_price".to_string()],
     };
@@ -51,8 +57,8 @@ fn data_handler_applies_processors() -> anyhow::Result<()> {
     })?;
 
     let DatasetBatch { features, labels } = loader.load()?;
-    assert_eq!(features.height(), 3);
-    assert!(features.column("ma_5").is_ok());
+    assert_eq!(features.height(), 6);
+    assert!(features.column("base").is_ok());
     assert!(labels.column("label_price").is_ok());
 
     Ok(())
@@ -61,18 +67,34 @@ fn data_handler_applies_processors() -> anyhow::Result<()> {
 #[test]
 fn contrib_processors_append_expected_columns() -> anyhow::Result<()> {
     let frame = df! {
-        "price" => &[100.0, 101.0, 103.0, 102.0, 104.0],
-        "timestamp" => &[1, 2, 3, 4, 5],
+        "open" => &[100.0, 101.0, 103.0, 102.0, 104.0, 105.0, 107.0, 106.0, 108.0, 110.0],
+        "close" => &[102.0, 103.0, 105.0, 104.0, 106.0, 107.0, 109.0, 108.0, 110.0, 112.0],
+        "high" => &[103.0, 104.0, 106.0, 105.0, 107.0, 108.0, 110.0, 109.0, 111.0, 113.0],
+        "low" => &[99.0, 100.0, 102.0, 101.0, 103.0, 104.0, 106.0, 105.0, 107.0, 109.0],
+        "volume" => &[1000.0, 1100.0, 1200.0, 1150.0, 1250.0, 1300.0, 1400.0, 1350.0, 1450.0, 1500.0],
+        "timestamp" => &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
     }?;
 
-    let alpha158 = Alpha158Processor::new("price");
+    let alpha158 = Alpha158Processor::new();
     let processed_158 = alpha158.process(frame.clone())?;
-    assert!(processed_158.column("ma_5").is_ok());
+    assert!(processed_158.column("MA_5").is_ok());
+    assert!(processed_158.column("KMID").is_ok());
 
-    let alpha360 = Alpha360Processor::new("price");
-    let processed_360 = alpha360.process(frame.clone())?;
-    assert!(processed_360.column("z_price").is_ok());
-    assert!(processed_360.column("return_sq").is_ok());
+    // Alpha360 needs at least 60 rows for lookback
+    let values: Vec<f64> = (0..70).map(|i| 100.0 + i as f64).collect();
+    let frame_360 = df! {
+        "open" => values.clone(),
+        "close" => values.clone(),
+        "high" => values.clone(),
+        "low" => values.clone(),
+        "vwap" => values.clone(),
+        "volume" => values.clone(),
+    }?;
+
+    let alpha360 = Alpha360Processor::new();
+    let processed_360 = alpha360.process(frame_360)?;
+    assert!(processed_360.column("close_0").is_ok());
+    assert!(processed_360.column("open_10").is_ok());
 
     Ok(())
 }
