@@ -1,6 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using SpeedReaderApp.ViewModels;
+using System.IO;
+using System.Linq;
 
 namespace SpeedReaderApp.Views;
 
@@ -11,6 +14,38 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+    }
+
+    private async void LoadPdf(object? sender, RoutedEventArgs e)
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Select PDF File",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("PDF Files")
+                {
+                    Patterns = new[] { "*.pdf" }
+                }
+            }
+        });
+
+        if (files.Count > 0)
+        {
+            var file = files[0];
+            await using var stream = await file.OpenReadAsync();
+            using var memoryStream = new MemoryStream();
+            await stream.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+
+            await ViewModel.LoadPdfAsync(memoryStream, file.Name);
+        } // memoryStream and stream both disposed here
+    }
+
+    private void ToggleLibrary(object? sender, RoutedEventArgs e)
+    {
+        ViewModel.ToggleLibrary();
     }
 
     private void TogglePlayPause(object? sender, RoutedEventArgs e)

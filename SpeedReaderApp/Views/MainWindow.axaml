@@ -105,6 +105,21 @@
                     </Grid>
                 </Border>
             </Border>
+
+            <!-- Loading indicator -->
+            <Border IsVisible="{Binding IsLoading}"
+                   Background="#CC000000"
+                   ZIndex="1000">
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="15">
+                    <ProgressBar IsIndeterminate="True" Width="200" Height="4"/>
+                    <TextBlock Text="{Binding LoadingMessage}"
+                              Foreground="White"
+                              FontSize="16"
+                              TextAlignment="Center"
+                              TextWrapping="Wrap"
+                              MaxWidth="300"/>
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- Bottom controls -->
@@ -117,6 +132,12 @@
             <TextBlock Text="{Binding ProgressText}"
                       HorizontalAlignment="Center"
                       Foreground="{Binding TextColor}"/>
+
+            <!-- File controls -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
+                <Button Content="📄 Load PDF" Click="LoadPdf" Padding="10,5"/>
+                <Button Content="📚 Library" Click="ToggleLibrary" Padding="10,5"/>
+            </StackPanel>
 
             <!-- Playback controls -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
